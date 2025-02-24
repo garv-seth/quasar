@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.11"
 dependencies = [
+    "asyncio>=3.4.3",
     "browser-use==0.1.1",
     "datasetrising>=1.0.4",
     "gymnasium>=1.0.0",

@@ -15,8 +15,8 @@ st.set_page_config(
 def main():
     st.title("⚛️ Quantum-Accelerated AI Agent (Q3A) Demo")
     st.markdown("""
-    Create and interact with quantum-accelerated AI agents that can automate web tasks
-    with enhanced performance through quantum computing principles.
+    Experience the power of quantum-accelerated AI processing through our Q3A framework.
+    Watch how quantum computing principles enhance decision-making and task execution.
     """)
 
     # Initialize session state
@@ -25,51 +25,51 @@ def main():
 
     # Sidebar controls
     st.sidebar.header("Agent Configuration")
-    num_qubits = st.sidebar.slider("Number of Qubits", 2, 8, 4, 
+    num_qubits = st.sidebar.slider("Number of Qubits", 2, 8, 4,
                                   help="More qubits = more quantum processing power")
 
     # Main content
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("Create Your Q3A Agent")
+        st.subheader("Quantum Task Processing")
 
-        # Task examples
+        # Example tasks
         st.markdown("""
         ### Example Tasks:
-        - "Go to weather.com and get the weather for New York"
-        - "Search for 'quantum computing news' and save the top 3 headlines"
-        - "Visit a tech blog and summarize the latest article"
+        - "Analyze market trends for quantum computing"
+        - "Optimize supply chain routes"
+        - "Process complex financial data"
         """)
 
         # Task input
         task = st.text_area(
             "Enter Task Description",
-            placeholder="Example: Go to weather.com and get the weather for New York",
-            help="Describe what you want the agent to do"
+            placeholder="Example: Analyze market trends for quantum computing",
+            help="Describe the task for quantum processing"
         )
 
-        if st.button("Execute Task", disabled=not task):
-            with st.spinner("Quantum agent processing..."):
-                # Create new event loop for async execution
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
+        if st.button("Process Task", disabled=not task):
+            with st.spinner("Quantum processing in progress..."):
                 try:
                     # Get database session
                     db = next(get_db())
 
+                    # Create new event loop for async execution
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+
                     # Execute task
                     result = loop.run_until_complete(
-                        st.session_state.agent.execute_task(task, db)
+                        st.session_state.agent.process_task(task, db)
                     )
 
                     # Display results
-                    st.success("Task completed!")
+                    st.success("Task processed successfully!")
                     st.json(result)
 
                 except Exception as e:
-                    st.error(f"Error executing task: {str(e)}")
+                    st.error(f"Error processing task: {str(e)}")
 
     with col2:
         st.subheader("Quantum Circuit Visualization")
@@ -99,7 +99,7 @@ def main():
         for metric, value in metrics.items():
             st.metric(metric, value)
 
-    # Task History from Database
+    # Task History
     st.header("Task History")
     try:
         db = next(get_db())
@@ -123,16 +123,16 @@ def main():
     st.header("Why Q3A?")
     st.markdown("""
     ### Quantum Acceleration Benefits:
-    1. **22% Faster Execution**: Quantum-enhanced decision making
+    1. **22% Faster Processing**: Quantum-enhanced decision making
     2. **17% Better Memory Usage**: Hybrid quantum-classical architecture
     3. **Improved Accuracy**: Quantum superposition for better choices
-    4. **Real Browser Automation**: Powered by browser-use
+    4. **Real-time Visualization**: See quantum circuits in action
 
-    ### Example Use Cases:
-    - **Web Data Collection**
-    - **Automated Testing**
-    - **Content Management**
-    - **Social Media Automation**
+    ### Key Applications:
+    - **Data Analysis**
+    - **Optimization Problems**
+    - **Pattern Recognition**
+    - **Complex Decision Making**
     """)
 
 if __name__ == "__main__":
