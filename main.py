@@ -34,6 +34,14 @@ def main():
     with col1:
         st.subheader("Create Your Q3A Agent")
 
+        # Task examples
+        st.markdown("""
+        ### Example Tasks:
+        - "Go to weather.com and get the weather for New York"
+        - "Search for 'quantum computing news' and save the top 3 headlines"
+        - "Visit a tech blog and summarize the latest article"
+        """)
+
         # Task input
         task = st.text_area(
             "Enter Task Description",
