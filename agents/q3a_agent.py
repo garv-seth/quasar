@@ -2,6 +2,7 @@ import numpy as np
 import pennylane as qml
 from typing import Dict, Any
 import time
+import asyncio
 from sqlalchemy.orm import Session
 
 class Q3Agent:
@@ -12,8 +13,12 @@ class Q3Agent:
         self.num_qubits = num_qubits
         self.dev = qml.device("default.qubit", wires=num_qubits)
 
-        # Initialize quantum circuit parameters
-        self.params = np.random.uniform(-np.pi, np.pi, (3, num_qubits, 3))
+        # Initialize quantum circuit parameters with correct dimensions
+        self.params = np.random.uniform(
+            -np.pi, 
+            np.pi, 
+            (3, num_qubits, num_qubits)  # Changed last dimension to match num_qubits
+        )
 
         # Create quantum circuit
         self.circuit = qml.QNode(self._create_circuit, self.dev)
@@ -24,12 +29,16 @@ class Q3Agent:
         for i in range(min(len(state), self.num_qubits)):
             qml.RY(state[i], wires=i)
 
-        # Apply quantum layers
-        for layer in range(3):
-            qml.StronglyEntanglingLayers(params[layer], wires=range(self.num_qubits))
+        # Apply quantum layers with proper parameter dimensions
+        for layer in range(min(3, len(params))):
+            # Apply entangling layers with correct parameter shape
+            qml.StronglyEntanglingLayers(
+                params[layer][:, :self.num_qubits], 
+                wires=range(self.num_qubits)
+            )
 
-        # Add quantum advantage operations
-        qml.QFT(wires=range(self.num_qubits))
+            # Add quantum advantage operations
+            qml.QFT(wires=range(self.num_qubits))
 
         return qml.probs(wires=range(self.num_qubits))
 
@@ -42,8 +51,10 @@ class Q3Agent:
             start_time = time.time()
             db_task = crud.create_task(db, task)
 
-            # Encode task into quantum state
-            task_encoding = np.array([ord(c) % (2*np.pi) for c in task[:self.num_qubits]])
+            # Encode task into quantum state with proper padding
+            task_encoding = np.zeros(self.num_qubits)
+            for i in range(min(len(task), self.num_qubits)):
+                task_encoding[i] = ord(task[i]) % (2*np.pi)
 
             # Get quantum-enhanced decision
             quantum_decision = self.circuit(self.params, task_encoding)
