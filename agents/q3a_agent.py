@@ -13,11 +13,13 @@ class Q3Agent:
         self.num_qubits = num_qubits
         self.dev = qml.device("default.qubit", wires=num_qubits)
 
-        # Initialize quantum circuit parameters with correct dimensions
+        # Initialize quantum circuit parameters with correct shape for StronglyEntanglingLayers
+        # Shape: (n_layers, n_qubits, 3) as required by StronglyEntanglingLayers
+        n_layers = 3
         self.params = np.random.uniform(
-            -np.pi, 
-            np.pi, 
-            (3, num_qubits, num_qubits)  # Changed last dimension to match num_qubits
+            low=-np.pi,
+            high=np.pi,
+            size=(n_layers, num_qubits, 3)
         )
 
         # Create quantum circuit
@@ -25,22 +27,29 @@ class Q3Agent:
 
     def _create_circuit(self, params, state):
         """Create quantum circuit for decision acceleration"""
-        # Encode input state
-        for i in range(min(len(state), self.num_qubits)):
-            qml.RY(state[i], wires=i)
+        try:
+            # Encode input state
+            for i in range(min(len(state), self.num_qubits)):
+                qml.RY(state[i], wires=i)
 
-        # Apply quantum layers with proper parameter dimensions
-        for layer in range(min(3, len(params))):
-            # Apply entangling layers with correct parameter shape
-            qml.StronglyEntanglingLayers(
-                params[layer][:, :self.num_qubits], 
-                wires=range(self.num_qubits)
-            )
+            # Apply quantum layers
+            n_layers = params.shape[0]
+            for layer in range(n_layers):
+                # Apply entangling layers
+                qml.StronglyEntanglingLayers(
+                    params[layer],  # This should now have correct shape (n_qubits, 3)
+                    wires=range(self.num_qubits)
+                )
 
-            # Add quantum advantage operations
-            qml.QFT(wires=range(self.num_qubits))
+                # Add quantum advantage operations
+                qml.QFT(wires=range(min(4, self.num_qubits)))  # Apply QFT to first 4 qubits
 
-        return qml.probs(wires=range(self.num_qubits))
+            # Return measurement probabilities
+            return qml.probs(wires=range(self.num_qubits))
+
+        except Exception as e:
+            print(f"Circuit error: {str(e)}")
+            raise
 
     async def process_task(self, task: str, db: Session) -> Dict[str, Any]:
         """Process a task with quantum acceleration"""
@@ -79,7 +88,7 @@ class Q3Agent:
             metrics = {
                 "quantum_advantage": 22.0,  # percentage improvement
                 "memory_efficiency": 17.0,
-                "circuit_depth": 3 * self.num_qubits,
+                "circuit_depth": n_layers * self.num_qubits,
                 "qubit_count": self.num_qubits
             }
             crud.create_quantum_metrics(db, db_task.id, metrics)
@@ -87,8 +96,10 @@ class Q3Agent:
             return task_result
 
         except Exception as e:
-            crud.update_task_result(db, db_task.id, {"error": str(e)}, time.time() - start_time)
-            raise e
+            if 'db_task' in locals():
+                crud.update_task_result(db, db_task.id, {"error": str(e)}, time.time() - start_time)
+            print(f"Processing error: {str(e)}")
+            raise
 
     def get_quantum_metrics(self) -> Dict[str, str]:
         """Get quantum performance metrics"""
