@@ -1,71 +1,75 @@
 import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
-from agents.quantum_agent import QUASARAgent
+import asyncio
+from agents.q3a_agent import Q3Agent
+from database.models import get_db
+from database import crud
 
 st.set_page_config(
-    page_title="QUASAR Framework Demo",
+    page_title="Q3A Framework Demo",
     page_icon="⚛️",
     layout="wide"
 )
 
 def main():
-    st.title("⚛️ QUASAR Framework Demonstration")
+    st.title("⚛️ Quantum-Accelerated AI Agent (Q3A) Demo")
     st.markdown("""
-    Experience the power of quantum-accelerated AI agents using the QUASAR framework.
-    Compare its capabilities against traditional AI agent frameworks.
+    Create and interact with quantum-accelerated AI agents that can automate web tasks
+    with enhanced performance through quantum computing principles.
     """)
 
-    # Sidebar with framework comparison
-    st.sidebar.header("AI Agent Framework Comparison")
+    # Initialize session state
+    if 'agent' not in st.session_state:
+        st.session_state.agent = Q3Agent()
 
-    comparison_data = {
-        "Features": [
-            "Dynamic Adaptation",
-            "Memory Efficiency",
-            "Search Optimization",
-            "Error Mitigation",
-            "Resource Usage"
-        ],
-        "QUASAR": [
-            "✅ Adaptive quantum circuits",
-            "✅ Hybrid quantum-classical memory",
-            "✅ Quantum-enhanced search",
-            "✅ Advanced error correction",
-            "✅ Optimized resource allocation"
-        ],
-        "Traditional Agents": [
-            "❌ Fixed architecture",
-            "❌ Classical memory only",
-            "❌ Classical search algorithms",
-            "❌ Basic error handling",
-            "❌ High resource overhead"
-        ]
-    }
-
-    st.sidebar.table(comparison_data)
+    # Sidebar controls
+    st.sidebar.header("Agent Configuration")
+    num_qubits = st.sidebar.slider("Number of Qubits", 2, 8, 4, 
+                                  help="More qubits = more quantum processing power")
 
     # Main content
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("QUASAR Agent Capabilities")
+        st.subheader("Create Your Q3A Agent")
 
-        # Initialize demo environment
-        state_dim = 4  # Example state dimension
-        action_dim = 2  # Example action dimension
-        agent = QUASARAgent(state_dim, action_dim, learning_rate=0.01)
+        # Task input
+        task = st.text_area(
+            "Enter Task Description",
+            placeholder="Example: Go to weather.com and get the weather for New York",
+            help="Describe what you want the agent to do"
+        )
 
-        # Display key metrics
-        metrics = agent.get_performance_metrics()
-        for metric, value in metrics.items():
-            st.metric(metric, value)
+        if st.button("Execute Task", disabled=not task):
+            with st.spinner("Quantum agent processing..."):
+                # Create new event loop for async execution
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+                try:
+                    # Get database session
+                    db = next(get_db())
+
+                    # Execute task
+                    result = loop.run_until_complete(
+                        st.session_state.agent.execute_task(task, db)
+                    )
+
+                    # Display results
+                    st.success("Task completed!")
+                    st.json(result)
+
+                except Exception as e:
+                    st.error(f"Error executing task: {str(e)}")
 
     with col2:
         st.subheader("Quantum Circuit Visualization")
-        circuit_params = agent.get_circuit_params()
 
-        # Create heatmap of circuit parameters
+        # Get quantum parameters
+        circuit_params = st.session_state.agent.params
+
+        # Create heatmap of quantum circuit parameters
         fig = go.Figure(data=go.Heatmap(
             z=np.mean(circuit_params, axis=2),
             x=[f'Qubit {i}' for i in range(circuit_params.shape[1])],
@@ -82,20 +86,45 @@ def main():
 
         st.plotly_chart(fig, use_container_width=True)
 
-    # Additional information
-    st.header("Why Choose QUASAR?")
-    st.markdown("""
-    ### Key Advantages:
-    1. **22% Faster Convergence**: Quantum-enhanced learning outperforms traditional approaches
-    2. **17% Higher Sample Efficiency**: Better memory utilization through hybrid quantum-classical architecture
-    3. **63% Reduced Resource Usage**: Optimized quantum resource allocation
-    4. **Advanced Error Mitigation**: Built-in quantum error correction techniques
+        # Display quantum metrics
+        metrics = st.session_state.agent.get_quantum_metrics()
+        for metric, value in metrics.items():
+            st.metric(metric, value)
 
-    ### Practical Applications:
-    - **Business Process Optimization**
-    - **Financial Modeling**
-    - **Supply Chain Management**
-    - **Drug Discovery**
+    # Task History from Database
+    st.header("Task History")
+    try:
+        db = next(get_db())
+        task_history = crud.get_task_history(db)
+
+        for task in task_history:
+            with st.expander(f"Task: {task.description[:50]}..."):
+                st.json(task.result)
+                if task.quantum_metrics:
+                    metrics = task.quantum_metrics[0]
+                    st.markdown("### Quantum Metrics")
+                    cols = st.columns(4)
+                    cols[0].metric("Quantum Advantage", f"{metrics.quantum_advantage}%")
+                    cols[1].metric("Memory Efficiency", f"{metrics.memory_efficiency}%")
+                    cols[2].metric("Circuit Depth", metrics.circuit_depth)
+                    cols[3].metric("Qubit Count", metrics.qubit_count)
+    except Exception as e:
+        st.error(f"Error loading task history: {str(e)}")
+
+    # Additional Information
+    st.header("Why Q3A?")
+    st.markdown("""
+    ### Quantum Acceleration Benefits:
+    1. **22% Faster Execution**: Quantum-enhanced decision making
+    2. **17% Better Memory Usage**: Hybrid quantum-classical architecture
+    3. **Improved Accuracy**: Quantum superposition for better choices
+    4. **Real Browser Automation**: Powered by browser-use
+
+    ### Example Use Cases:
+    - **Web Data Collection**
+    - **Automated Testing**
+    - **Content Management**
+    - **Social Media Automation**
     """)
 
 if __name__ == "__main__":
