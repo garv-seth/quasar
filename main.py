@@ -42,6 +42,13 @@ st.markdown("""
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
         gap: 1rem;
     }
+    .analysis-section {
+        background-color: white;
+        padding: 1.5rem;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 1rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -96,7 +103,7 @@ def display_quantum_metrics(metrics: dict):
         with cols[2]:
             st.metric("Circuit Depth", metrics['circuit_stats']['circuit_depth'])
         with cols[3]:
-            st.metric("Processing Time", f"{metrics['processing_time_ms']}ms")
+            st.metric("Processing Time", f"{metrics['processing_time_ms']:.0f}ms")
 
         # Create quantum advantage visualization
         st.markdown("#### 📊 Quantum Advantage Analysis")
@@ -124,6 +131,14 @@ def display_quantum_metrics(metrics: dict):
         with st.expander("🔍 Detailed Quantum Circuit Statistics"):
             st.json(metrics['circuit_stats'])
 
+        # Display quantum advantage metrics
+        st.markdown("#### ⚡ Performance Improvement")
+        adv_cols = st.columns(2)
+        with adv_cols[0]:
+            st.metric("Speed Improvement", metrics['quantum_advantage']['speedup'])
+        with adv_cols[1]:
+            st.metric("Accuracy Boost", metrics['quantum_advantage']['accuracy_improvement'])
+
     except Exception as e:
         logging.error(f"Error displaying metrics: {str(e)}")
         st.warning("Unable to display some metrics. The analysis results are still valid.")
@@ -141,8 +156,8 @@ def main():
     # Main interface
     task = st.text_area(
         "What would you like me to analyze?",
-        placeholder="Example: Analyze emerging trends in quantum computing applications",
-        help="I can analyze any topic using quantum-accelerated processing"
+        placeholder="Example: Analyze trends in the job market for quantum computing professionals",
+        help="I can analyze market trends, industry data, and provide insights using quantum-accelerated processing"
     )
 
     if st.button("🚀 Analyze", disabled=not task):
@@ -158,9 +173,32 @@ def main():
                 if result and 'error' not in result:
                     # Display analysis results
                     st.markdown("### 📝 Analysis Results")
-                    st.write(result['analysis'])
+                    st.markdown("""---""")
+
+                    # Format and display the analysis in sections
+                    analysis_sections = result['analysis'].split('\n')
+                    current_section = ""
+                    section_content = []
+
+                    for line in analysis_sections:
+                        if line.strip().startswith(tuple(['1.', '2.', '3.', '4.', '5.'])):
+                            if current_section and section_content:
+                                with st.container():
+                                    st.markdown(f"#### {current_section}")
+                                    st.markdown('\n'.join(section_content))
+                            current_section = line.strip()
+                            section_content = []
+                        else:
+                            section_content.append(line)
+
+                    # Display last section
+                    if current_section and section_content:
+                        with st.container():
+                            st.markdown(f"#### {current_section}")
+                            st.markdown('\n'.join(section_content))
 
                     # Display quantum metrics
+                    st.markdown("""---""")
                     display_quantum_metrics(result['quantum_metrics'])
 
                     # Show sources
@@ -191,7 +229,7 @@ def main():
         This framework leverages:
         1. IonQ's quantum simulator
         2. Advanced quantum circuits for pattern recognition
-        3. Realtime AI processing with GPT-4o-mini
+        3. Realtime AI processing with GPT-4o
 
         Powered by Azure Quantum & OpenAI
         """)
