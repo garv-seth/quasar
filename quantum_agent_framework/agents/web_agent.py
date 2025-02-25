@@ -27,57 +27,74 @@ class WebAgent:
             'Accept-Language': 'en-US,en;q=0.5',
         }
         self.client = AsyncOpenAI()
-        # Use publicly accessible APIs and endpoints
+        # Use only publicly accessible APIs that don't require authentication
         self.search_urls = [
             "https://api.github.com/search/repositories?q={query}+language:python",
             "https://api.github.com/search/issues?q={query}+label:hiring",
-            "https://dev.to/api/articles?tag={query}",
-            "https://newsapi.org/v2/everything?q={query}&language=en&sortBy=relevancy"
+            "https://en.wikipedia.org/w/api.php?action=query&format=json&prop=extracts&exintro=true&titles={query}",
+            "https://en.wikipedia.org/w/api.php?action=query&format=json&list=search&srsearch={query}"
         ]
 
-    async def _fetch_page(self, url: str) -> str:
+    async def _fetch_page(self, url: str) -> Optional[Dict]:
         """Fetch content from a URL using aiohttp."""
         try:
             timeout = aiohttp.ClientTimeout(total=30)
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.get(url, headers=self.headers, ssl=False) as response:
                     if response.status == 200:
-                        content_type = response.headers.get('Content-Type', '')
-                        if 'application/json' in content_type:
-                            data = await response.json()
-                            # Extract relevant text from JSON response
-                            return self._extract_text_from_json(data)
+                        if 'application/json' in response.headers.get('Content-Type', ''):
+                            return await response.json()
                         else:
-                            return await response.text()
+                            text = await response.text()
+                            return {'html': text}
                     else:
                         logging.warning(f"Failed to fetch {url}: Status {response.status}")
-                        return ""
+                        return None
         except Exception as e:
             logging.error(f"Error fetching {url}: {str(e)}")
-            return ""
+            return None
 
     def _extract_text_from_json(self, data: Dict) -> str:
         """Extract relevant text from JSON API responses."""
         texts = []
 
-        if isinstance(data, dict):
-            # GitHub API
-            if 'items' in data:
-                for item in data['items']:
-                    if 'description' in item and item['description']:
-                        texts.append(item['description'])
-                    if 'body' in item and item['body']:
-                        texts.append(item['body'])
+        try:
+            if isinstance(data, dict):
+                # GitHub API responses
+                if 'items' in data:
+                    for item in data['items']:
+                        if 'description' in item and item['description']:
+                            texts.append(item['description'])
+                        if 'body' in item and item['body']:
+                            texts.append(item['body'])
 
-            # News API
-            if 'articles' in data:
-                for article in data['articles']:
-                    if article.get('description'):
-                        texts.append(article['description'])
-                    if article.get('content'):
-                        texts.append(article['content'])
+                # Wikipedia API responses
+                if 'query' in data:
+                    if 'pages' in data['query']:
+                        for page in data['query']['pages'].values():
+                            if 'extract' in page:
+                                texts.append(page['extract'])
+                    if 'search' in data['query']:
+                        for result in data['query']['search']:
+                            if 'snippet' in result:
+                                texts.append(BeautifulSoup(result['snippet'], 'html.parser').get_text())
 
-        return ' '.join(texts)
+                # HTML content
+                if 'html' in data:
+                    soup = BeautifulSoup(data['html'], 'html.parser')
+                    for tag in ['script', 'style', 'nav', 'footer', 'header']:
+                        for element in soup.find_all(tag):
+                            element.decompose()
+
+                    for p in soup.find_all(['p', 'h1', 'h2', 'h3', 'article']):
+                        text = p.get_text().strip()
+                        if len(text) > 50:  # Filter out short snippets
+                            texts.append(text)
+
+            return ' '.join(texts)
+        except Exception as e:
+            logging.error(f"Error extracting text: {str(e)}")
+            return ""
 
     def _quantum_process_data(self, texts: List[str]) -> Dict[str, Any]:
         """Process text data using quantum circuits with performance comparison."""
@@ -100,6 +117,7 @@ class WebAgent:
                 if np.sum(freq) > 0:
                     freq = freq / np.linalg.norm(freq)
                 classical_features.append(freq)
+
             classical_time = (datetime.now() - classical_start).total_seconds() * 1000
 
             # Quantum processing
@@ -118,6 +136,7 @@ class WebAgent:
                 except Exception as e:
                     logging.error(f"Quantum circuit error: {str(e)}")
                     scores.append(0.0)
+
             quantum_time = (datetime.now() - quantum_start).total_seconds() * 1000
 
             # Normalize scores
@@ -129,19 +148,14 @@ class WebAgent:
                 else:
                     scores = [1.0 / len(scores)] * len(scores)
 
-            # Calculate real quantum advantage metrics
-            total_time = (datetime.now() - start_time).total_seconds() * 1000
-            speedup = classical_time / quantum_time if quantum_time > 0 else 1.0
-            accuracy = np.mean(scores) * 100 if scores else 0.0
-
             return {
                 'scores': scores,
                 'metrics': {
                     'classical_time_ms': classical_time,
                     'quantum_time_ms': quantum_time,
-                    'total_time_ms': total_time,
-                    'speedup': speedup,
-                    'accuracy': accuracy,
+                    'total_time_ms': (datetime.now() - start_time).total_seconds() * 1000,
+                    'speedup': classical_time / quantum_time if quantum_time > 0 else 1.0,
+                    'accuracy': np.mean(scores) * 100 if scores else 0.0,
                     'quantum_circuit_stats': self.optimizer.get_circuit_stats()
                 }
             }
@@ -203,26 +217,32 @@ class WebAgent:
                 f"hiring trends {prompt}"
             ]
 
+            # Build URLs with proper encoding
             formatted_urls = []
             for term in search_terms:
                 for url in self.search_urls:
-                    formatted_urls.append(url.format(query=term.replace(' ', '+')))
+                    formatted_urls.append(url.format(
+                        query=term.replace(' ', '+').replace('?', '')
+                    ))
 
-            # Fetch content in parallel
-            pages = await asyncio.gather(*[self._fetch_page(url) for url in formatted_urls])
+            # Fetch content in parallel with error handling
+            fetch_tasks = [self._fetch_page(url) for url in formatted_urls]
+            pages = await asyncio.gather(*fetch_tasks, return_exceptions=True)
 
-            # Extract and process content
+            # Process successful responses
             texts = []
             processed_urls = []
-            for content, url in zip(pages, formatted_urls):
-                if content:
-                    texts.append(content)
-                    processed_urls.append(url)
+            for data, url in zip(pages, formatted_urls):
+                if isinstance(data, dict):  # Successful response
+                    content = self._extract_text_from_json(data)
+                    if content:
+                        texts.append(content)
+                        processed_urls.append(url)
 
             if not texts:
                 return {
                     'error': True,
-                    'message': 'Failed to fetch relevant content'
+                    'message': 'Failed to fetch relevant content. Please try again.'
                 }
 
             # Process with quantum acceleration
