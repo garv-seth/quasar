@@ -84,35 +84,33 @@ def display_quantum_metrics(metrics: Dict[str, Any]):
         # Display key metrics
         cols = st.columns(4)
         with cols[0]:
-            st.metric("Processing Type", metrics.get('processing_type', 'Unknown'))
+            st.metric("Processing Type", metrics.get('method_used', 'Unknown'))
         with cols[1]:
             st.metric("Backend Used", metrics.get('backend', 'Unknown'))
         with cols[2]:
             st.metric("Circuit Depth", metrics.get('circuit_depth', 0))
         with cols[3]:
-            st.metric("Quantum Advantage", 
-                     f"{metrics.get('quantum_advantage', '0')}x faster" 
-                     if metrics.get('quantum_advantage') else "N/A")
+            st.metric("Computation Time", 
+                     f"{metrics.get('computation_time', 0):.4f}s" 
+                     if metrics.get('computation_time') else "N/A")
 
-        # Display quantum result for factorization
-        if 'quantum_result' in metrics and metrics['quantum_result'].get('factors'):
+        # Display factorization results
+        if 'factors' in metrics and metrics['factors']:
             st.markdown('<div class="factorization-result">', unsafe_allow_html=True)
             st.markdown("#### 🧮 Factorization Results")
 
             # Show all factors
-            factors = metrics['quantum_result']['factors']
-            st.success(f"All factors: {', '.join(map(str, factors))}")
+            factors = metrics['factors']
+            st.success(f"All factors in ascending order: {', '.join(map(str, factors))}")
 
             # Show computation details
-            st.info(f"Computation method: {metrics['quantum_result'].get('method_used', 'Unknown')}")
-            st.info(f"Backend used: {metrics['quantum_result'].get('backend', 'Unknown')}")
+            st.info(f"Computation method: {metrics.get('method_used', 'Unknown')}")
+            st.info(f"Backend used: {metrics.get('backend', 'Unknown')}")
 
-            # Show computation time
-            st.write(f"Computation time: {metrics['quantum_result'].get('computation_time', 0):.4f} seconds")
-
-            if 'explanation' in metrics['quantum_result']:
+            # Show explanation if available
+            if 'details' in metrics and metrics['details'].get('reason'):
                 st.markdown("#### 📝 Technical Details")
-                st.write(metrics['quantum_result']['explanation'])
+                st.write(metrics['details']['reason'])
 
             st.markdown('</div>', unsafe_allow_html=True)
 
@@ -158,12 +156,6 @@ def main():
                 help="More qubits allow processing larger numbers and more complex optimizations"
             )
 
-            task_type = st.radio(
-                "Task Type",
-                ["Mathematical", "Optimization", "General"],
-                help="Select the type of task to optimize quantum resource usage"
-            )
-
             st.markdown("---")
             st.markdown("""
             ### 🧪 About QUASAR
@@ -181,11 +173,11 @@ def main():
     task = st.text_area(
         "Enter your query:",
         placeholder="""Examples:
-- Factor a large number: "Factor 15226050279225333605356183781326374297180681149613"
+- Factor a number: "Factor 25" or "Find all factors of 3960"
 - Optimize resources: "Optimize distribution of 1000 items across 50 locations"
 - General query: "Analyze recent quantum computing breakthroughs"
         """,
-        help="For mathematical tasks, quantum computing will be used for exponential speedup"
+        help="For mathematical tasks, quantum computing will be used when advantageous"
     )
 
     if st.button("🚀 Process", disabled=not task):
@@ -201,41 +193,37 @@ def main():
                 if result and 'error' not in result:
                     # Display processing type
                     st.markdown(
-                        f'<div class="processing-type">Processing Type: {result["task_type"].upper()}</div>',
+                        f'<div class="processing-type">Processing Type: {result.get("method_used", "Unknown").upper()}</div>',
                         unsafe_allow_html=True
                     )
 
-                    # Display results
-                    if result['task_type'] == 'factorization':
+                    # Display factorization results
+                    if result.get('factors'):
                         st.markdown("### 📊 Factorization Results")
-                        if 'quantum_result' in result:
-                            if result['quantum_result'].get('success', False):
-                                factors = result['quantum_result']['factors']
-                                factors_str = ", ".join(map(str, factors))
-                                st.success(f"All factors: {factors_str}")
+                        factors = result['factors']
+                        st.success(f"All factors in ascending order: {', '.join(map(str, factors))}")
+                        st.info(f"Computation method: {result.get('method_used', 'Unknown')}")
+                        st.info(f"Backend used: {result.get('backend', 'Unknown')}")
 
-                                # Show computation method
-                                method = result['quantum_result'].get('hardware', 'Unknown')
-                                st.info(f"Computation method: {method}")
+                        if 'computation_time' in result:
+                            st.write(f"Computation time: {result['computation_time']:.4f} seconds")
 
-                                # Show computation time
-                                time = result['quantum_result'].get('computation_time', 0)
-                                st.write(f"Computation time: {time:.4f} seconds")
-                            else:
-                                st.warning("No factors found or computation failed")
+                        if 'details' in result and result['details'].get('reason'):
+                            st.markdown("#### 📝 Technical Details")
+                            st.write(result['details']['reason'])
                     else:
                         st.markdown("### 📝 Analysis Results")
-                        st.write(result.get('classical_result', {}))
+                        st.write(result.get('response', 'No response available'))
 
                     # Display quantum metrics
                     display_quantum_metrics(result)
 
                 else:
-                    st.error("An error occurred during analysis. Please try again.")
+                    st.error(f"An error occurred during analysis: {result.get('error', 'Unknown error')}")
 
             except Exception as e:
                 logging.error(f"Error during analysis: {str(e)}")
-                st.error("An error occurred during analysis. Please try again.")
+                st.error(f"An error occurred: {str(e)}")
 
 if __name__ == "__main__":
     main()

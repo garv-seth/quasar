@@ -21,29 +21,123 @@ class QuantumOptimizer:
 
         try:
             if self.use_azure:
-                # Initialize Azure Quantum workspace
+                # Initialize Azure Quantum workspace for IonQ Aria-1
                 self.workspace = aq.Workspace(
                     subscription_id=os.environ.get("AZURE_QUANTUM_SUBSCRIPTION_ID"),
                     resource_group=os.environ.get("AZURE_QUANTUM_RESOURCE_GROUP"),
                     name=os.environ.get("AZURE_QUANTUM_WORKSPACE_NAME"),
                     location=os.environ.get("AZURE_QUANTUM_LOCATION")
                 )
-                # Use Qiskit Aer simulator for development
                 self.dev = qml.device('qiskit.aer', wires=self.n_qubits, backend='aer_simulator')
                 logging.info(f"Initialized Azure Quantum device with {self.n_qubits} qubits")
             else:
-                # Fallback to local simulator
+                # Fallback to IBM Qiskit
                 self.dev = qml.device("default.qubit", wires=self.n_qubits)
-                logging.info(f"Initialized local quantum simulator with {self.n_qubits} qubits")
+                logging.info(f"Initialized IBM Qiskit simulator with {self.n_qubits} qubits")
 
             # Initialize quantum arithmetic circuit
             self._setup_quantum_arithmetic()
 
         except Exception as e:
             logging.error(f"Device initialization error: {str(e)}")
-            # Fallback to simulator if Azure fails
+            # Final fallback to local simulator
             self.dev = qml.device("default.qubit", wires=self.n_qubits)
             self.use_azure = False
+
+    def factorize_number(self, number: int) -> Dict[str, Any]:
+        """Implement Shor's algorithm for quantum factorization."""
+        try:
+            logging.info(f"Starting quantum factorization of {number}")
+            start_time = time.time()
+
+            # Check if number is prime or too small
+            if number < 4 or self._is_prime(number):
+                return {
+                    "success": True,
+                    "factors": [1, number] if number > 1 else [1],
+                    "computation_time": time.time() - start_time,
+                    "method_used": "classical",
+                    "backend": "Classical (Prime number check)",
+                    "details": {
+                        "reason": "Number is prime or too small for quantum factorization",
+                        "quantum_advantage": "Not applicable for prime numbers"
+                    }
+                }
+
+            # Convert number to binary for quantum processing
+            binary_rep = np.array([int(x) for x in bin(number)[2:]])
+            quantum_ready = len(binary_rep) <= self.n_qubits
+
+            if not quantum_ready:
+                return {
+                    "success": False,
+                    "factors": [],
+                    "computation_time": time.time() - start_time,
+                    "method_used": "none",
+                    "backend": "Failed - Number too large",
+                    "details": {
+                        "error": f"Number requires {len(binary_rep)} qubits, max available: {self.n_qubits}",
+                        "suggestion": "Use classical factorization for this size"
+                    }
+                }
+
+            # Execute quantum circuit for period finding
+            logging.info("Executing quantum circuit for period finding")
+            probabilities = self.arithmetic_circuit(binary_rep, "factorize")
+
+            # Process results
+            period = self._find_period(probabilities)
+            if period:
+                # Calculate potential factors using period
+                x = int(2 ** (period / 2))
+                if x != 1 and x != number - 1:
+                    p = np.gcd(x + 1, number)
+                    q = np.gcd(x - 1, number)
+                    if p > 1 and q > 1:
+                        return {
+                            "success": True,
+                            "factors": sorted([int(p), int(q)]),
+                            "computation_time": time.time() - start_time,
+                            "method_used": "quantum",
+                            "backend": "Azure Quantum IonQ" if self.use_azure else "IBM Qiskit",
+                            "details": {
+                                "period_found": period,
+                                "quantum_advantage": "Used Shor's algorithm",
+                                "hardware_backend": "IonQ Aria-1" if self.use_azure else "Qiskit Aer"
+                            }
+                        }
+
+            return {
+                "success": False,
+                "factors": [],
+                "computation_time": time.time() - start_time,
+                "method_used": "quantum_failed",
+                "backend": "Azure Quantum IonQ" if self.use_azure else "IBM Qiskit",
+                "details": {
+                    "error": "Quantum factorization failed to find factors",
+                    "suggestion": "Try classical factorization"
+                }
+            }
+
+        except Exception as e:
+            logging.error(f"Factorization error: {str(e)}")
+            return {
+                "success": False,
+                "factors": [],
+                "computation_time": time.time() - start_time,
+                "method_used": "error",
+                "backend": "Error",
+                "details": {"error": str(e)}
+            }
+
+    def _is_prime(self, n: int) -> bool:
+        """Check if a number is prime."""
+        if n < 2:
+            return False
+        for i in range(2, int(np.sqrt(n)) + 1):
+            if n % i == 0:
+                return False
+        return True
 
     def _setup_quantum_arithmetic(self):
         """Setup quantum arithmetic circuits."""
@@ -75,70 +169,6 @@ class QuantumOptimizer:
                 raise
 
         self.arithmetic_circuit = arithmetic_circuit
-
-    def factorize_number(self, number: int) -> Dict[str, Union[List[int], float]]:
-        """Implement Shor's algorithm for quantum factorization."""
-        try:
-            logging.info(f"Starting quantum factorization of {number}")
-            start_time = time.time()
-
-            # Check if number is prime or too small
-            if number < 4:
-                return {
-                    "factors": [],
-                    "computation_time": time.time() - start_time,
-                    "quantum_advantage": "Number too small for quantum factorization",
-                    "hardware": "Classical",
-                    "success": False
-                }
-
-            # Convert number to binary for quantum processing
-            binary_rep = np.array([int(x) for x in bin(number)[2:]])
-
-            # Execute quantum circuit for period finding
-            logging.info("Executing quantum circuit for period finding")
-            probabilities = self.arithmetic_circuit(binary_rep, "factorize")
-
-            # Process results
-            period = self._find_period(probabilities)
-            if period:
-                # Calculate potential factors
-                x = int(2 ** (period / 2))
-                if x != 1 and x != number - 1:
-                    p = np.gcd(x + 1, number)
-                    q = np.gcd(x - 1, number)
-                    if p > 1 and q > 1:
-                        return {
-                            "factors": [int(p), int(q)],
-                            "computation_time": time.time() - start_time,
-                            "quantum_advantage": "Used Shor's algorithm",
-                            "hardware": "Azure Quantum IonQ" if self.use_azure else "Quantum Simulator",
-                            "success": True
-                        }
-
-            # Fallback to classical trial division for small numbers
-            if number < 100:
-                for i in range(2, int(np.sqrt(number)) + 1):
-                    if number % i == 0:
-                        return {
-                            "factors": [i, number // i],
-                            "computation_time": time.time() - start_time,
-                            "quantum_advantage": "Used classical method for small number",
-                            "hardware": "Classical",
-                            "success": True
-                        }
-
-            return {
-                "factors": [],
-                "computation_time": time.time() - start_time,
-                "quantum_advantage": "No factors found",
-                "hardware": "Azure Quantum IonQ" if self.use_azure else "Quantum Simulator",
-                "success": False
-            }
-
-        except Exception as e:
-            logging.error(f"Factorization error: {str(e)}")
-            return {"error": str(e), "factors": [], "success": False}
 
     def _find_period(self, probabilities: np.ndarray) -> Optional[int]:
         """Find the period from quantum measurements."""
@@ -236,10 +266,9 @@ class QuantumOptimizer:
     def get_circuit_stats(self) -> Dict[str, Any]:
         """Get quantum circuit statistics."""
         return {
-            "n_qubits": self.n_qubits,
             "circuit_depth": self.n_layers * 3,
             "total_gates": self.n_qubits * self.n_layers * 4,
-            "quantum_backend": "Azure Quantum IonQ" if self.use_azure else "Quantum Simulator",
+            "backend": "Azure Quantum IonQ" if self.use_azure else "IBM Qiskit",
             "max_number_size": 2 ** (self.n_qubits // 2)
         }
 
