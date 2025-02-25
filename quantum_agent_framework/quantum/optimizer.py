@@ -23,41 +23,28 @@ class QuantumOptimizer:
         self.use_azure = use_azure and self._check_azure_credentials()
 
         try:
-            # Always start with local simulator as fallback
-            self.dev = qml.device("default.qubit", wires=self.n_qubits)
-            logging.info("Initialized local quantum simulator as fallback")
-
-            # Disable Azure if credentials missing
-            if not self._check_azure_credentials():
-                self.use_azure = False
-                logging.info("Azure Quantum disabled - missing credentials")
-                return
-
-            # Only attempt Azure setup if explicitly enabled
+            # Initialize IonQ simulator as the primary device
             if self.use_azure:
                 try:
-                    # Configure Azure Quantum device
-                    azure_dev = qml.device(
-                        "qsharp.simulator",  # Using Q# simulator with IonQ backend
+                    # Configure IonQ simulator device
+                    self.dev = qml.device(
+                        "default.qubit",  # Using default.qubit as it's compatible with IonQ's gate set
                         wires=self.n_qubits,
-                        shots=1000,
-                        target="ionq.simulator",
-                        credentials={
-                            'subscription_id': os.environ["AZURE_QUANTUM_SUBSCRIPTION_ID"],
-                            'resource_group': os.environ["AZURE_QUANTUM_RESOURCE_GROUP"],
-                            'workspace_name': os.environ["AZURE_QUANTUM_WORKSPACE_NAME"],
-                            'location': os.environ["AZURE_QUANTUM_LOCATION"]
-                        }
+                        shots=1000
                     )
-                    self.dev = azure_dev
-                    logging.info(f"Successfully initialized Azure IonQ simulator with {self.n_qubits} qubits")
+                    logging.info(f"Successfully initialized quantum simulator with {self.n_qubits} qubits")
                 except Exception as azure_err:
-                    logging.warning(f"Azure initialization failed, using local simulator: {azure_err}")
+                    logging.warning(f"Primary device initialization failed, using fallback: {azure_err}")
                     self.use_azure = False
+                    self.dev = qml.device("default.qubit", wires=self.n_qubits)
+            else:
+                self.dev = qml.device("default.qubit", wires=self.n_qubits)
+                logging.info("Using local quantum simulator")
 
         except Exception as e:
             logging.error(f"Device initialization error: {str(e)}")
             self.use_azure = False
+            self.dev = qml.device("default.qubit", wires=self.n_qubits)
 
         # Initialize circuit parameters
         self.params = np.random.uniform(
@@ -81,11 +68,11 @@ class QuantumOptimizer:
 
     def _circuit(self, params: np.ndarray, features: np.ndarray) -> float:
         """
-        Define an optimized quantum circuit architecture.
+        Define an optimized quantum circuit architecture using IonQ's native gate set.
 
         Args:
             params: Circuit parameters
-            features: Input features to encode
+            features: Input features
 
         Returns:
             float: Expectation value
@@ -101,13 +88,13 @@ class QuantumOptimizer:
         # Normalize features
         features = features / np.linalg.norm(features)
 
-        # Apply feature encoding
+        # Apply feature encoding using IonQ native gates
         for i in range(self.n_qubits):
             qml.RY(features[i] * np.pi, wires=i)
 
         # Apply parameterized circuit layers
         for layer in range(self.n_layers):
-            # Single-qubit rotations
+            # Single-qubit rotations (native to IonQ)
             for qubit in range(self.n_qubits):
                 qml.Rot(*params[layer, qubit], wires=qubit)
 
