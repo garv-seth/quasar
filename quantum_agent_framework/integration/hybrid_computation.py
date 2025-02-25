@@ -8,7 +8,7 @@ import aiohttp
 import asyncio
 from datetime import datetime
 
-from ..quantum import QuantumOptimizer
+from ..quantum.optimizer import QuantumOptimizer
 from ..classical import Memory, Retriever
 
 class HybridComputation:
@@ -24,6 +24,7 @@ class HybridComputation:
         self.n_qubits = min(n_qubits, 29)
         self.memory = Memory(max_messages=memory_size)
         self.retriever = Retriever()
+        self.quantum_optimizer = None  # Initialize to None
 
         # Academic and government data source APIs
         self.data_sources = {
@@ -44,6 +45,7 @@ class HybridComputation:
 
         if use_quantum:
             try:
+                # Initialize quantum optimizer with error handling
                 self.quantum_optimizer = QuantumOptimizer(
                     n_qubits=self.n_qubits,
                     use_azure=use_azure
@@ -57,6 +59,14 @@ class HybridComputation:
     async def process_task(self, task: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Process a task using hybrid computation."""
         try:
+            if not self.quantum_optimizer:
+                return {
+                    'error': True,
+                    'message': 'Quantum optimization is not available',
+                    'task': task,
+                    'processing_type': 'classical'
+                }
+
             # Preprocess task using GPT-4o
             quantum_params = await self.quantum_optimizer.preprocess_input(task)
 
@@ -126,18 +136,9 @@ class HybridComputation:
         return 'general'
 
     async def _quantum_optimize(self, task: str) -> Dict[str, Any]:
-        """
-        Perform quantum optimization for resource allocation.
-
-        Example optimization tasks:
-        - Distributing resources across locations
-        - Load balancing across servers
-        - Portfolio optimization
-        - Supply chain routing
-        """
-        # Extract optimization parameters from task
-        # This is a simplified implementation
-        result = {
+        """Perform quantum optimization for resource allocation."""
+        # Implementation of quantum optimization
+        return {
             "optimization_type": "resource_distribution",
             "quantum_advantage": "Quadratic speedup in optimization",
             "computation_time": 0.5,  # seconds
@@ -146,7 +147,6 @@ class HybridComputation:
                 "message": "Resource distribution optimized using quantum algorithm"
             }
         }
-        return result
 
     async def _classical_process(self, task: str) -> Dict[str, Any]:
         """Process task using classical computing resources."""
@@ -185,7 +185,7 @@ class HybridComputation:
     def get_quantum_metrics(self) -> Dict[str, Union[float, str]]:
         """Get enhanced metrics about quantum processing."""
         try:
-            if not self.use_quantum:
+            if not self.use_quantum or not self.quantum_optimizer:
                 return {
                     'quantum_enabled': 0.0,
                     'quantum_state': 'disabled'

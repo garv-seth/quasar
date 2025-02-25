@@ -1,5 +1,10 @@
 {pkgs}: {
   deps = [
+    pkgs.spdlog
+    pkgs.nlohmann_json
+    pkgs.muparserx
+    pkgs.fmt
+    pkgs.catch2
     pkgs.glib
     pkgs.gtk3
     pkgs.xorg.libXrandr
