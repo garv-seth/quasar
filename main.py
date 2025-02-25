@@ -62,7 +62,7 @@ def main():
             with st.spinner("Processing with quantum acceleration..."):
                 try:
                     # Process task
-                    result = st.session_state.hybrid_computer.process_task(task) #Corrected to remove await, assuming process_task is synchronous.  If asynchronous,  re-add await and ensure asyncio is handled appropriately.
+                    result = st.session_state.hybrid_computer.process_task(task)
 
                     # Display results
                     st.success("Task completed successfully!")
@@ -81,12 +81,12 @@ def main():
         # Get quantum parameters from session
         metrics = st.session_state.hybrid_computer.get_quantum_metrics()
 
-        # Display metrics
+        # Display metrics with proper formatting based on value type
         cols = st.columns(len(metrics))
         for i, (metric, value) in enumerate(metrics.items()):
             cols[i].metric(
                 label=metric.replace('_', ' ').title(),
-                value=f"{value:.2f}"
+                value=str(value) if isinstance(value, str) else f"{value:.2f}" if isinstance(value, float) else str(value)
             )
 
         st.subheader("Memory State")
