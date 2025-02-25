@@ -8,6 +8,7 @@ import logging
 import time
 from openai import AsyncOpenAI
 import azure.quantum as aq
+import re
 
 class QuantumOptimizer:
     """Manages quantum circuit optimization for enhanced mathematical computations."""
@@ -43,6 +44,46 @@ class QuantumOptimizer:
             # Final fallback to local simulator
             self.dev = qml.device("default.qubit", wires=self.n_qubits)
             self.use_azure = False
+
+    async def preprocess_input(self, task: str) -> Dict[str, Any]:
+        """Extract quantum task parameters from input with improved factorization detection."""
+        try:
+            # First try to extract number using regex
+            number_match = re.search(r'factor.*?(\d+)', task.lower())
+            if number_match:
+                number = int(number_match.group(1))
+                return {"type": "factorization", "number": number}
+
+            # If no direct match, use GPT-4 for analysis
+            messages = [
+                {"role": "system", "content": """You are a quantum computing task analyzer.
+                For ANY factorization task, extract the number and ALWAYS return:
+                {"type": "factorization", "number": <extracted_number>}
+
+                Look for:
+                - Numbers to factorize
+                - Terms like "factor", "prime", "divisor"
+                - Mathematical notation (N=, p=, q=)
+
+                ALWAYS classify factorization tasks as quantum tasks.
+                If no number is found, return {"type": "unknown"}"""},
+                {"role": "user", "content": task}
+            ]
+
+            completion = await self.openai_client.chat.completions.create(
+                model="gpt-4",
+                messages=messages,
+                max_tokens=100,
+                temperature=0,
+                response_format={"type": "json_object"}
+            )
+
+            response = completion.choices[0].message.content
+            return self._parse_ai_response(response)
+
+        except Exception as e:
+            logging.error(f"Preprocessing error: {str(e)}")
+            return {"type": "unknown", "error": str(e)}
 
     def factorize_number(self, number: int) -> Dict[str, Any]:
         """Implement Shor's algorithm for quantum factorization."""
@@ -198,37 +239,6 @@ class QuantumOptimizer:
         except Exception as e:
             logging.error(f"Period finding error: {str(e)}")
             return None
-
-    async def preprocess_input(self, task: str) -> Dict[str, Any]:
-        """Extract quantum task parameters from input."""
-        try:
-            messages = [
-                {"role": "system", "content": """You are a quantum computing task analyzer.
-                For ANY factorization task, extract the number and ALWAYS return:
-                {"type": "factorization", "number": <extracted_number>}
-
-                Look for:
-                - Numbers to factorize
-                - Terms like "factor", "prime", "semiprime"
-                - Mathematical notation (N=, p=, q=)
-
-                ALWAYS classify factorization tasks as quantum tasks."""},
-                {"role": "user", "content": task}
-            ]
-
-            completion = await self.openai_client.chat.completions.create(
-                model="gpt-4",
-                messages=messages,
-                max_tokens=500,
-                temperature=0.2
-            )
-
-            response = completion.choices[0].message.content
-            return self._parse_ai_response(response)
-
-        except Exception as e:
-            logging.error(f"Preprocessing error: {str(e)}")
-            return {"type": "error", "error": str(e)}
 
     def _parse_ai_response(self, response: str) -> Dict[str, Any]:
         """Parse AI response with enhanced number extraction."""

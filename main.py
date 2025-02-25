@@ -84,11 +84,11 @@ def display_quantum_metrics(metrics: Dict[str, Any]):
         # Display key metrics
         cols = st.columns(4)
         with cols[0]:
-            st.metric("Processing Type", metrics.get('method_used', 'Unknown'))
+            st.metric("Processing Type", metrics.get('method_used', 'Unknown').upper())
         with cols[1]:
             st.metric("Backend Used", metrics.get('backend', 'Unknown'))
         with cols[2]:
-            st.metric("Circuit Depth", metrics.get('circuit_depth', 0))
+            st.metric("Circuit Depth", metrics.get('details', {}).get('circuit_depth', 0))
         with cols[3]:
             st.metric("Computation Time", 
                      f"{metrics.get('computation_time', 0):.4f}s" 
@@ -104,25 +104,14 @@ def display_quantum_metrics(metrics: Dict[str, Any]):
             st.success(f"All factors in ascending order: {', '.join(map(str, factors))}")
 
             # Show computation details
-            st.info(f"Computation method: {metrics.get('method_used', 'Unknown')}")
+            st.info(f"Computation method: {metrics.get('method_used', 'Unknown').upper()}")
             st.info(f"Backend used: {metrics.get('backend', 'Unknown')}")
 
-            # Show explanation if available
-            if 'details' in metrics and metrics['details'].get('reason'):
-                st.markdown("#### 📝 Technical Details")
-                st.write(metrics['details']['reason'])
+            if 'response' in metrics:
+                st.markdown("#### 📝 Explanation")
+                st.write(metrics['response'])
 
             st.markdown('</div>', unsafe_allow_html=True)
-
-        # Display sources section if available
-        if 'sources' in metrics and metrics['sources'] and metrics['sources'][0]['title'] != 'N/A':
-            st.markdown('<div class="source-section">', unsafe_allow_html=True)
-            st.markdown("#### 📚 Quantum Computing Research Sources")
-            for source in metrics['sources']:
-                st.markdown(f"- [{source['title']}]({source['url']})")
-            st.markdown('</div>', unsafe_allow_html=True)
-
-        st.markdown('</div>', unsafe_allow_html=True)
 
     except Exception as e:
         logging.error(f"Error displaying metrics: {str(e)}")
@@ -202,7 +191,7 @@ def main():
                         st.markdown("### 📊 Factorization Results")
                         factors = result['factors']
                         st.success(f"All factors in ascending order: {', '.join(map(str, factors))}")
-                        st.info(f"Computation method: {result.get('method_used', 'Unknown')}")
+                        st.info(f"Computation method: {result.get('method_used', 'Unknown').upper()}")
                         st.info(f"Backend used: {result.get('backend', 'Unknown')}")
 
                         if 'computation_time' in result:
