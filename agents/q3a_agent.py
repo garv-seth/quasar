@@ -57,7 +57,10 @@ class Q3Agent:
     async def initialize_browser(self):
         """Initialize playwright browser for web automation"""
         playwright = await async_playwright().start()
-        self.browser = await playwright.chromium.launch()
+        self.browser = await playwright.chromium.launch(
+            headless=True,  # Ensure headless mode
+            args=['--no-sandbox', '--disable-setuid-sandbox']  # Additional args for containerized environment
+        )
 
     async def execute_task(self, task: str, db: Session) -> Dict[str, Any]:
         """Execute a task with quantum acceleration and store results in database"""
