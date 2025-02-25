@@ -86,7 +86,7 @@ def display_quantum_metrics(metrics: Dict[str, Any]):
         with cols[0]:
             st.metric("Processing Type", metrics.get('processing_type', 'Unknown'))
         with cols[1]:
-            st.metric("Qubits Used", metrics.get('n_qubits', 0))
+            st.metric("Backend Used", metrics.get('backend', 'Unknown'))
         with cols[2]:
             st.metric("Circuit Depth", metrics.get('circuit_depth', 0))
         with cols[3]:
@@ -95,21 +95,25 @@ def display_quantum_metrics(metrics: Dict[str, Any]):
                      if metrics.get('quantum_advantage') else "N/A")
 
         # Display quantum result for factorization
-        if metrics.get('quantum_result'):
+        if 'quantum_result' in metrics and metrics['quantum_result'].get('factors'):
             st.markdown('<div class="factorization-result">', unsafe_allow_html=True)
             st.markdown("#### 🧮 Factorization Results")
-            quantum_result = metrics['quantum_result']
 
-            if quantum_result.get('factors'):
-                factors = quantum_result['factors']
-                st.success(f"Found factors: {' × '.join(map(str, factors))}")
-                if len(factors) == 2:
-                    st.write(f"Verification: {factors[0]} × {factors[1]} = {factors[0] * factors[1]}")
-            else:
-                st.warning("No factors found in quantum computation")
+            # Show all factors
+            factors = metrics['quantum_result']['factors']
+            st.success(f"All factors: {', '.join(map(str, factors))}")
 
-            st.write(f"Computation Time: {quantum_result.get('computation_time', 0):.2f} seconds")
-            st.write(f"Hardware Used: {quantum_result.get('hardware', 'Unknown')}")
+            # Show computation details
+            st.info(f"Computation method: {metrics['quantum_result'].get('method_used', 'Unknown')}")
+            st.info(f"Backend used: {metrics['quantum_result'].get('backend', 'Unknown')}")
+
+            # Show computation time
+            st.write(f"Computation time: {metrics['quantum_result'].get('computation_time', 0):.4f} seconds")
+
+            if 'explanation' in metrics['quantum_result']:
+                st.markdown("#### 📝 Technical Details")
+                st.write(metrics['quantum_result']['explanation'])
+
             st.markdown('</div>', unsafe_allow_html=True)
 
         # Display sources section if available
