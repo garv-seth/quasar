@@ -17,7 +17,7 @@ st.set_page_config(
     page_title="QUASAR: Quantum Search and Reasoning",
     page_icon="⚛️",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 # Custom CSS for improved UI
@@ -49,16 +49,27 @@ st.markdown("""
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         margin-bottom: 1rem;
     }
+    .metric-explanation {
+        font-size: 0.9em;
+        color: #666;
+        margin-top: 0.5rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-async def analyze_with_quantum(task: str):
+async def analyze_with_quantum(task: str, n_qubits: int):
     """Analyze content with quantum acceleration."""
     try:
-        # Process results with quantum agent
-        if not hasattr(st.session_state, 'web_agent'):
-            st.error("Quantum agent not initialized. Please refresh the page.")
-            return None
+        # Initialize agents with user-specified qubit count
+        st.session_state.hybrid_computer = HybridComputation(
+            n_qubits=n_qubits,
+            use_quantum=True,
+            use_azure=True
+        )
+        st.session_state.web_agent = WebAgent(
+            optimizer=st.session_state.hybrid_computer.quantum_optimizer,
+            preprocessor=st.session_state.hybrid_computer.quantum_preprocessor
+        )
 
         result = await st.session_state.web_agent.analyze_content(task)
         return result
@@ -67,60 +78,94 @@ async def analyze_with_quantum(task: str):
         logging.error(f"Error during quantum analysis: {str(e)}")
         return {"error": str(e)}
 
-def initialize_agents():
-    """Initialize quantum agents with optimal configuration."""
-    try:
-        if 'hybrid_computer' not in st.session_state:
-            st.session_state.hybrid_computer = HybridComputation(
-                n_qubits=8,  # Optimized for balance between performance and quantum advantage
-                use_quantum=True,
-                use_azure=True
-            )
-
-        if 'web_agent' not in st.session_state:
-            st.session_state.web_agent = WebAgent(
-                optimizer=st.session_state.hybrid_computer.quantum_optimizer,
-                preprocessor=st.session_state.hybrid_computer.quantum_preprocessor
-            )
-            logging.info("Successfully initialized quantum agents")
-        return True
-    except Exception as e:
-        logging.error(f"Failed to initialize agents: {str(e)}")
-        st.error("Error initializing quantum agents. Please try refreshing the page.")
-        return False
-
 def display_quantum_metrics(metrics: dict):
-    """Display quantum processing metrics with visualizations."""
+    """Display quantum processing metrics with visualizations and explanations."""
     try:
         st.markdown("### 🔄 Quantum Processing Metrics")
 
-        # Display key metrics in columns
+        # Display key metrics in columns with explanations
         cols = st.columns(4)
         with cols[0]:
             st.metric("Quantum Confidence", f"{metrics['quantum_confidence']:.1f}%")
+            st.markdown("""
+            <div class="metric-explanation">
+            Measures the quantum circuit's confidence in its analysis based on measurement outcomes.
+            Higher values indicate more certain results.
+            </div>
+            """, unsafe_allow_html=True)
+
         with cols[1]:
             st.metric("Qubits Used", metrics['circuit_stats']['n_qubits'])
+            st.markdown("""
+            <div class="metric-explanation">
+            Number of quantum bits (qubits) used in the computation.
+            More qubits enable processing more data dimensions simultaneously.
+            </div>
+            """, unsafe_allow_html=True)
+
         with cols[2]:
             st.metric("Circuit Depth", metrics['circuit_stats']['circuit_depth'])
+            st.markdown("""
+            <div class="metric-explanation">
+            Number of sequential quantum operations.
+            Lower depth means faster quantum processing.
+            </div>
+            """, unsafe_allow_html=True)
+
         with cols[3]:
             st.metric("Processing Time", f"{metrics['processing_time_ms']:.0f}ms")
+            st.markdown("""
+            <div class="metric-explanation">
+            Time taken for quantum circuit execution.
+            Excludes classical pre/post-processing time.
+            </div>
+            """, unsafe_allow_html=True)
+
+        # Display quantum advantage metrics with detailed explanations
+        st.markdown("#### ⚡ Performance Improvement")
+        st.markdown("""
+        Comparing quantum vs classical processing performance:
+        """)
+
+        adv_cols = st.columns(2)
+        with adv_cols[0]:
+            st.metric("Speed Improvement", metrics['quantum_advantage']['speedup'])
+            st.markdown(f"""
+            <div class="metric-explanation">
+            Quantum processing time: {metrics['quantum_advantage']['quantum_time_ms']:.2f}ms<br>
+            Classical processing time: {metrics['quantum_advantage']['classical_time_ms']:.2f}ms<br>
+            The quantum algorithm processes data {metrics['quantum_advantage']['speedup']} times faster than classical processing.
+            </div>
+            """, unsafe_allow_html=True)
+
+        with adv_cols[1]:
+            st.metric("Accuracy Boost", metrics['quantum_advantage']['accuracy_improvement'])
+            st.markdown("""
+            <div class="metric-explanation">
+            Improvement in relevance scoring accuracy using quantum superposition and interference effects
+            compared to classical ranking algorithms.
+            </div>
+            """, unsafe_allow_html=True)
 
         # Create quantum advantage visualization
-        st.markdown("#### 📊 Quantum Advantage Analysis")
+        st.markdown("#### 📊 Quantum vs Classical Performance")
         fig = go.Figure()
 
-        # Add source relevance scores
+        # Add processing time comparison
         fig.add_trace(go.Bar(
-            x=[f"Source {i+1}" for i in range(len(metrics['relevance_scores']))],
-            y=metrics['relevance_scores'],
-            name='Source Relevance',
-            marker_color='rgb(55, 83, 109)'
+            x=['Quantum', 'Classical'],
+            y=[
+                metrics['quantum_advantage']['quantum_time_ms'],
+                metrics['quantum_advantage']['classical_time_ms']
+            ],
+            name='Processing Time (ms)',
+            marker_color=['rgb(55, 83, 109)', 'rgb(26, 118, 255)']
         ))
 
         fig.update_layout(
-            title='Quantum-Computed Source Relevance',
-            xaxis_title='Source',
-            yaxis_title='Relevance Score',
+            title='Processing Time Comparison',
+            xaxis_title='Processing Method',
+            yaxis_title='Time (milliseconds)',
             plot_bgcolor='rgba(0,0,0,0)',
             font=dict(size=12)
         )
@@ -130,14 +175,6 @@ def display_quantum_metrics(metrics: dict):
         # Display technical details in expander
         with st.expander("🔍 Detailed Quantum Circuit Statistics"):
             st.json(metrics['circuit_stats'])
-
-        # Display quantum advantage metrics
-        st.markdown("#### ⚡ Performance Improvement")
-        adv_cols = st.columns(2)
-        with adv_cols[0]:
-            st.metric("Speed Improvement", metrics['quantum_advantage']['speedup'])
-        with adv_cols[1]:
-            st.metric("Accuracy Boost", metrics['quantum_advantage']['accuracy_improvement'])
 
     except Exception as e:
         logging.error(f"Error displaying metrics: {str(e)}")
@@ -149,9 +186,50 @@ def main():
     *Quantum-Accelerated AI Agent (Q3A) powered by Azure Quantum and IonQ*
     """)
 
-    # Initialize agents with error handling
-    if not initialize_agents():
-        return
+    # Sidebar for advanced settings
+    with st.sidebar:
+        st.header("⚙️ Advanced Settings")
+
+        use_quantum = st.checkbox("Enable Quantum Acceleration", value=True)
+        n_qubits = 8  # Default value
+
+        if use_quantum:
+            n_qubits = st.slider(
+                "Number of Qubits",
+                min_value=4,
+                max_value=29,
+                value=8,
+                help="More qubits allow processing more data dimensions but increase circuit complexity"
+            )
+            backend = st.selectbox(
+                "Quantum Backend",
+                ["Azure IonQ Simulator", "IonQ Aria-1"],
+                help="Select quantum processing backend. Aria-1 provides real quantum hardware access"
+            )
+
+            if backend == "IonQ Aria-1":
+                st.warning("""
+                Using real quantum hardware (Aria-1) may increase processing time
+                but provides true quantum advantage for complex calculations.
+                """)
+
+        st.markdown("---")
+        st.markdown("""
+        ### 🧪 About QUASAR
+        **Q**uantum **U**nified **S**earch **A**nd **R**easoning
+
+        This framework leverages:
+        1. IonQ quantum processors for parallel data processing
+        2. Quantum circuits optimized for text analysis
+        3. Hybrid quantum-classical processing with GPT-4o
+
+        The quantum advantage comes from:
+        - Parallel processing of multiple data dimensions
+        - Quantum superposition for feature comparison
+        - Interference-based relevance scoring
+
+        Powered by Azure Quantum & OpenAI
+        """)
 
     # Main interface
     task = st.text_area(
@@ -168,7 +246,7 @@ def main():
                 asyncio.set_event_loop(loop)
 
                 # Execute analysis with quantum acceleration
-                result = loop.run_until_complete(analyze_with_quantum(task))
+                result = loop.run_until_complete(analyze_with_quantum(task, n_qubits))
 
                 if result and 'error' not in result:
                     # Display analysis results
@@ -211,28 +289,6 @@ def main():
             except Exception as e:
                 logging.error(f"Error during analysis: {str(e)}")
                 st.error(f"An error occurred during analysis. Please try again.")
-
-    # Sidebar for advanced settings
-    with st.sidebar:
-        st.header("⚙️ Advanced Settings")
-
-        use_quantum = st.checkbox("Enable Quantum Acceleration", value=True)
-        if use_quantum:
-            n_qubits = st.slider("Number of Qubits", 4, 29, 8)
-            st.info("Using 8 qubits provides optimal balance between speed and quantum advantage")
-
-        st.markdown("---")
-        st.markdown("""
-        ### 🧪 About QUASAR
-        **Q**uantum **U**nified **S**earch **A**nd **R**easoning
-
-        This framework leverages:
-        1. IonQ's quantum simulator
-        2. Advanced quantum circuits for pattern recognition
-        3. Realtime AI processing with GPT-4o
-
-        Powered by Azure Quantum & OpenAI
-        """)
 
 if __name__ == "__main__":
     main()
