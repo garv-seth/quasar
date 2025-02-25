@@ -8,8 +8,8 @@ import aiohttp
 import asyncio
 from datetime import datetime
 
-from ..quantum import QuantumOptimizer, QuantumClassifier, QuantumPreprocessor
-from ..classical import Chain, Memory, Retriever
+from ..quantum import QuantumOptimizer
+from ..classical import Memory, Retriever
 
 class HybridComputation:
     """Manages hybrid classical-quantum computations with enhanced source integration."""
@@ -48,8 +48,6 @@ class HybridComputation:
                     n_qubits=self.n_qubits,
                     use_azure=use_azure
                 )
-                self.quantum_classifier = QuantumClassifier(n_qubits=self.n_qubits)
-                self.quantum_preprocessor = QuantumPreprocessor(n_qubits=self.n_qubits)
                 logging.info(f"Successfully initialized quantum components with {self.n_qubits} qubits")
             except Exception as e:
                 logging.error(f"Failed to initialize quantum components: {str(e)}")
@@ -59,30 +57,43 @@ class HybridComputation:
     async def process_task(self, task: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Process a task using hybrid computation."""
         try:
-            # Task classification
-            task_type = self._classify_task_type(task)
+            # Preprocess task using GPT-4o
+            quantum_params = await self.quantum_optimizer.preprocess_input(task)
 
             results = {
                 'task': task,
-                'task_type': task_type,
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().isoformat(),
+                'processing_type': quantum_params.get('type', 'unknown')
             }
 
-            if task_type == 'mathematical':
-                # Extract numbers for factorization
-                numbers = self._extract_numbers(task)
-                if numbers:
-                    result = self.quantum_optimizer.factorize_number(numbers[0])
-                    results['quantum_result'] = result
-                    results['processing_type'] = 'quantum_mathematical'
-            elif task_type == 'optimization':
-                result = await self._quantum_optimize(task)
-                results['quantum_result'] = result
-                results['processing_type'] = 'quantum_optimization'
+            if quantum_params.get('type') == 'factorization':
+                # Handle factorization
+                number = quantum_params.get('number')
+                if number:
+                    quantum_result = self.quantum_optimizer.factorize_number(number)
+                    # Post-process results
+                    interpreted_results = await self.quantum_optimizer.postprocess_results(quantum_result)
+                    results.update({
+                        'quantum_result': quantum_result,
+                        'interpreted_results': interpreted_results,
+                        'processing_type': 'quantum_mathematical'
+                    })
+            elif quantum_params.get('type') == 'optimization':
+                # Handle optimization
+                opt_result = await self._quantum_optimize(task)
+                interpreted_results = await self.quantum_optimizer.postprocess_results(opt_result)
+                results.update({
+                    'quantum_result': opt_result,
+                    'interpreted_results': interpreted_results,
+                    'processing_type': 'quantum_optimization'
+                })
             else:
+                # Fallback to classical processing
                 classical_result = await self._classical_process(task)
-                results['classical_result'] = classical_result
-                results['processing_type'] = 'classical'
+                results.update({
+                    'classical_result': classical_result,
+                    'processing_type': 'classical'
+                })
 
             # Gather relevant sources
             sources = await self._gather_academic_sources(task)

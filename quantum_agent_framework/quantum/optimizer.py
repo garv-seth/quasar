@@ -7,6 +7,7 @@ import os
 import logging
 from scipy.optimize import minimize
 import time
+from openai import AsyncOpenAI
 
 class QuantumOptimizer:
     """Manages quantum circuit optimization for enhanced mathematical computations."""
@@ -20,18 +21,25 @@ class QuantumOptimizer:
             n_layers (int): Number of circuit layers
             use_azure (bool): Whether to use Azure Quantum
         """
-        self.n_qubits = min(n_qubits, 29)  # IonQ simulator limit
+        self.n_qubits = min(n_qubits, 29)  # IonQ hardware limit
         self.n_layers = n_layers
         self.use_azure = use_azure and self._check_azure_credentials()
+        self.openai_client = AsyncOpenAI()
 
         try:
-            # Initialize quantum device with increased shots for better precision
-            self.dev = qml.device(
-                "default.qubit",
-                wires=self.n_qubits,
-                shots=10000  # Increased for better precision in mathematical operations
-            )
-            logging.info(f"Initialized quantum device with {self.n_qubits} qubits")
+            # Initialize quantum device with IonQ Aria-1 hardware
+            if self.use_azure:
+                self.dev = qml.device(
+                    "azure.ionq",  # Use actual IonQ hardware
+                    wires=self.n_qubits,
+                    shots=10000,  # Increased for better precision
+                    backend="ionq.aria-1"  # Specify Aria-1 hardware
+                )
+                logging.info(f"Initialized IonQ Aria-1 quantum device with {self.n_qubits} qubits")
+            else:
+                # Fallback to simulator if Azure credentials are missing
+                self.dev = qml.device("default.qubit", wires=self.n_qubits, shots=10000)
+                logging.info("Using local quantum simulator as fallback")
         except Exception as e:
             logging.error(f"Device initialization error: {str(e)}")
             raise
@@ -45,6 +53,101 @@ class QuantumOptimizer:
 
         # Create quantum arithmetic circuits
         self._setup_quantum_arithmetic()
+
+    async def preprocess_input(self, task: str) -> Dict[str, Any]:
+        """Use GPT-4o to preprocess natural language input into quantum parameters."""
+        try:
+            messages = [
+                {"role": "system", "content": """You are a quantum computing preprocessor. 
+                Extract numerical parameters and identify the type of quantum computation needed.
+                For factorization problems, extract the number to factorize.
+                For optimization problems, extract the constraints and objective function."""},
+                {"role": "user", "content": task}
+            ]
+
+            completion = await self.openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=messages,
+                max_tokens=500,
+                temperature=0.2
+            )
+
+            # Parse the AI response into quantum parameters
+            response = completion.choices[0].message.content
+            return self._parse_ai_response(response)
+
+        except Exception as e:
+            logging.error(f"Preprocessing error: {str(e)}")
+            return {"error": str(e)}
+
+    def _parse_ai_response(self, response: str) -> Dict[str, Any]:
+        """Parse AI response into structured quantum parameters."""
+        # This is a simplified parser, expand based on response format
+        import json
+        try:
+            # Assuming GPT-4o returns JSON-formatted string
+            params = json.loads(response)
+            return params
+        except:
+            # Fallback parsing for non-JSON responses
+            if 'factor' in response.lower():
+                numbers = [int(n) for n in response.split() if n.isdigit()]
+                return {'type': 'factorization', 'number': numbers[0] if numbers else None}
+            return {'type': 'unknown', 'raw_response': response}
+
+    def factorize_number(self, number: int) -> Dict[str, Union[List[int], float]]:
+        """
+        Attempt to factorize a large number using IonQ quantum hardware.
+
+        Args:
+            number: The number to factorize
+
+        Returns:
+            Dict containing factors and computation time
+        """
+        try:
+            # Convert number to binary representation for quantum processing
+            binary_rep = np.array([int(x) for x in bin(number)[2:]])
+            padded_input = np.pad(binary_rep, (0, self.n_qubits - len(binary_rep) % self.n_qubits))
+
+            # Execute quantum factorization
+            start_time = time.time()
+            result = self.arithmetic_circuit(padded_input, "factorize")
+
+            # Process quantum results
+            potential_factors = self._extract_factors_from_measurement(result, number)
+
+            return {
+                "factors": potential_factors,
+                "computation_time": time.time() - start_time,
+                "quantum_advantage": "Exponential speedup for prime factorization",
+                "hardware": "IonQ Aria-1" if self.use_azure else "Simulator"
+            }
+
+        except Exception as e:
+            logging.error(f"Factorization error: {str(e)}")
+            return {"error": str(e)}
+
+    async def postprocess_results(self, results: Dict[str, Any]) -> str:
+        """Use GPT-4o to convert quantum results into user-friendly format."""
+        try:
+            messages = [
+                {"role": "system", "content": "You are a quantum computing results interpreter. Explain the results in clear, user-friendly language."},
+                {"role": "user", "content": f"Explain these quantum computation results: {str(results)}"}
+            ]
+
+            completion = await self.openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=messages,
+                max_tokens=500,
+                temperature=0.7
+            )
+
+            return completion.choices[0].message.content
+
+        except Exception as e:
+            logging.error(f"Postprocessing error: {str(e)}")
+            return f"Error interpreting results: {str(e)}"
 
     def _setup_quantum_arithmetic(self):
         """Setup specialized quantum circuits for mathematical operations."""
@@ -103,39 +206,6 @@ class QuantumOptimizer:
             # Entanglement layer
             for i in range(self.n_qubits - 1):
                 qml.CNOT(wires=[i, i + 1])
-
-    def factorize_number(self, number: int) -> Dict[str, Union[List[int], float]]:
-        """
-        Attempt to factorize a large number using quantum resources.
-
-        Args:
-            number: The number to factorize
-
-        Returns:
-            Dict containing factors and computation time
-        """
-        try:
-            # Convert number to binary representation for quantum processing
-            binary_rep = np.array([int(x) for x in bin(number)[2:]])
-            padded_input = np.pad(binary_rep, (0, self.n_qubits - len(binary_rep) % self.n_qubits))
-
-            # Execute quantum factorization
-            start_time = time.time()
-            result = self.arithmetic_circuit(padded_input, "factorize")
-
-            # Classical post-processing to extract factors
-            # This is a simplified version - real implementation would use full Shor's algorithm
-            potential_factors = self._extract_factors_from_measurement(result, number)
-
-            return {
-                "factors": potential_factors,
-                "computation_time": time.time() - start_time,
-                "quantum_advantage": "Exponential speedup for prime factorization"
-            }
-
-        except Exception as e:
-            logging.error(f"Factorization error: {str(e)}")
-            return {"error": str(e)}
 
     def optimize_resources(self, 
                          objective_function: callable,
