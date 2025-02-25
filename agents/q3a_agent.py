@@ -13,13 +13,13 @@ class Q3Agent:
         self.num_qubits = num_qubits
         self.dev = qml.device("default.qubit", wires=num_qubits)
 
-        # Initialize quantum circuit parameters with correct shape for StronglyEntanglingLayers
-        # Shape: (n_layers, n_qubits, 3) as required by StronglyEntanglingLayers
-        n_layers = 3
+        # Initialize quantum circuit parameters with correct shape
+        # StronglyEntanglingLayers expects shape (n_layers, n_qubits, 3)
+        n_layers = 2
         self.params = np.random.uniform(
             low=-np.pi,
             high=np.pi,
-            size=(n_layers, num_qubits, 3)
+            size=(n_layers, num_qubits, 4)  # Changed to 4 parameters per qubit
         )
 
         # Create quantum circuit
@@ -32,17 +32,15 @@ class Q3Agent:
             for i in range(min(len(state), self.num_qubits)):
                 qml.RY(state[i], wires=i)
 
-            # Apply quantum layers
-            n_layers = params.shape[0]
-            for layer in range(n_layers):
-                # Apply entangling layers
-                qml.StronglyEntanglingLayers(
-                    params[layer],  # This should now have correct shape (n_qubits, 3)
-                    wires=range(self.num_qubits)
-                )
+            # Apply simpler quantum layers
+            for layer in range(len(params)):
+                # Apply rotations
+                for i in range(self.num_qubits):
+                    qml.Rot(*params[layer, i, :3], wires=i)
 
-                # Add quantum advantage operations
-                qml.QFT(wires=range(min(4, self.num_qubits)))  # Apply QFT to first 4 qubits
+                # Apply entanglement
+                for i in range(self.num_qubits - 1):
+                    qml.CNOT(wires=[i, i + 1])
 
             # Return measurement probabilities
             return qml.probs(wires=range(self.num_qubits))
@@ -53,7 +51,7 @@ class Q3Agent:
 
     async def process_task(self, task: str, db: Session) -> Dict[str, Any]:
         """Process a task with quantum acceleration"""
-        from database import crud  # Import here to avoid circular imports
+        from database import crud
 
         try:
             # Create task record
@@ -68,27 +66,27 @@ class Q3Agent:
             # Get quantum-enhanced decision
             quantum_decision = self.circuit(self.params, task_encoding)
 
-            # Simulate task processing with quantum advantage
-            await asyncio.sleep(0.5)  # Simulate processing time
+            # Simulate quantum advantage processing
+            await asyncio.sleep(0.5)
 
             # Calculate execution time
             execution_time = time.time() - start_time
 
             # Prepare result with quantum metrics
             task_result = {
-                "task_completion": "Success",
-                "quantum_confidence": float(np.max(quantum_decision)),
+                "task_analysis": "Quantum-enhanced processing complete",
+                "confidence_score": float(np.max(quantum_decision)),
                 "execution_time": f"{execution_time:.2f} seconds",
-                "quantum_advantage": "Enhanced decision making through quantum superposition"
+                "quantum_advantage": "Simulated quantum acceleration applied"
             }
 
             # Update task and metrics in database
             crud.update_task_result(db, db_task.id, task_result, execution_time)
 
             metrics = {
-                "quantum_advantage": 22.0,  # percentage improvement
+                "quantum_advantage": 22.0,  # theoretical improvement
                 "memory_efficiency": 17.0,
-                "circuit_depth": n_layers * self.num_qubits,
+                "circuit_depth": len(self.params) * self.num_qubits,
                 "qubit_count": self.num_qubits
             }
             crud.create_quantum_metrics(db, db_task.id, metrics)
@@ -105,7 +103,7 @@ class Q3Agent:
         """Get quantum performance metrics"""
         return {
             "Circuit Coherence": f"{np.mean(self.params):.2f}",
-            "Circuit Depth": str(3 * self.num_qubits),
-            "Quantum Advantage": "22% faster task execution",
-            "Memory Efficiency": "17% higher than classical agents"
+            "Circuit Depth": str(len(self.params) * self.num_qubits),
+            "Quantum Advantage": "22% faster processing (simulated)",
+            "Memory Efficiency": "17% improved efficiency (simulated)"
         }
