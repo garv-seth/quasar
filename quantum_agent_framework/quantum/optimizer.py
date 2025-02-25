@@ -23,28 +23,37 @@ class QuantumOptimizer:
         self.use_azure = use_azure and self._check_azure_credentials()
 
         try:
-            if self.use_azure:
-                # Set up Azure Quantum device using IonQ simulator
-                self.dev = qml.device(
-                    "microsoft.ionq.simulator",  # IonQ simulator through Azure
-                    wires=self.n_qubits,
-                    shots=1000,  # Number of shots for measurement
-                    credentials={
-                        'subscription_id': os.environ["AZURE_QUANTUM_SUBSCRIPTION_ID"],
-                        'resource_group': os.environ["AZURE_QUANTUM_RESOURCE_GROUP"],
-                        'workspace_name': os.environ["AZURE_QUANTUM_WORKSPACE_NAME"],
-                        'location': os.environ["AZURE_QUANTUM_LOCATION"]
-                    }
-                )
-                logging.info(f"Successfully initialized Azure IonQ simulator with {self.n_qubits} qubits")
-            else:
-                # Fallback to local simulator
-                self.dev = qml.device("default.qubit", wires=self.n_qubits)
-                logging.info("Using local quantum simulator")
+            # Start with local simulator by default
+            self.dev = qml.device("default.qubit", wires=self.n_qubits)
+            logging.info("Using local quantum simulator")
+
+            # Try Azure only if explicitly configured
+            if self.use_azure and all(k in os.environ for k in [
+                "AZURE_QUANTUM_SUBSCRIPTION_ID",
+                "AZURE_QUANTUM_RESOURCE_GROUP",
+                "AZURE_QUANTUM_WORKSPACE_NAME",
+                "AZURE_QUANTUM_LOCATION"
+            ]):
+                try:
+                    azure_dev = qml.device(
+                        "microsoft.ionq.simulator",
+                        wires=self.n_qubits,
+                        shots=1000,
+                        credentials={
+                            'subscription_id': os.environ["AZURE_QUANTUM_SUBSCRIPTION_ID"],
+                            'resource_group': os.environ["AZURE_QUANTUM_RESOURCE_GROUP"],
+                            'workspace_name': os.environ["AZURE_QUANTUM_WORKSPACE_NAME"],
+                            'location': os.environ["AZURE_QUANTUM_LOCATION"]
+                        }
+                    )
+                    self.dev = azure_dev
+                    logging.info(f"Successfully initialized Azure IonQ simulator with {self.n_qubits} qubits")
+                except Exception as azure_err:
+                    logging.warning(f"Azure initialization failed, using local simulator: {azure_err}")
+                    self.use_azure = False
 
         except Exception as e:
-            logging.error(f"Failed to initialize Azure IonQ simulator: {str(e)}")
-            logging.info("Falling back to local quantum simulator")
+            logging.error(f"Device initialization error: {str(e)}")
             self.dev = qml.device("default.qubit", wires=self.n_qubits)
             self.use_azure = False
 
