@@ -9,17 +9,15 @@ class Q3Agent:
     """Quantum-Accelerated AI Agent (Q3A) demonstrating quantum advantages"""
 
     def __init__(self, num_qubits: int = 4):
-        # Initialize quantum device
         self.num_qubits = num_qubits
         self.dev = qml.device("default.qubit", wires=num_qubits)
 
         # Initialize quantum circuit parameters with correct shape
-        # StronglyEntanglingLayers expects shape (n_layers, n_qubits, 3)
         n_layers = 2
         self.params = np.random.uniform(
             low=-np.pi,
             high=np.pi,
-            size=(n_layers, num_qubits, 4)  # Changed to 4 parameters per qubit
+            size=(n_layers, num_qubits, 4)
         )
 
         # Create quantum circuit
@@ -49,6 +47,29 @@ class Q3Agent:
             print(f"Circuit error: {str(e)}")
             raise
 
+    def _analyze_investment_potential(self, quantum_decision):
+        """Simulate quantum-enhanced investment analysis"""
+        # Use quantum output to generate simulated insights
+        risk_score = float(quantum_decision[0])
+        growth_potential = float(quantum_decision[1])
+        market_sentiment = float(quantum_decision[2])
+
+        analysis = {
+            "risk_level": "High" if risk_score > 0.6 else "Medium" if risk_score > 0.3 else "Low",
+            "growth_potential": f"{growth_potential * 100:.1f}%",
+            "market_sentiment": "Positive" if market_sentiment > 0.5 else "Negative",
+            "quantum_confidence": f"{np.mean(quantum_decision) * 100:.1f}%"
+        }
+
+        recommendations = [
+            "Consider diversifying portfolio to manage risk" if risk_score > 0.5 else
+            "Current market conditions suggest stable growth opportunities",
+            "Quantum analysis suggests favorable timing for tech sector" if growth_potential > 0.6 else
+            "Consider defensive stocks in current market conditions"
+        ]
+
+        return analysis, recommendations
+
     async def process_task(self, task: str, db: Session) -> Dict[str, Any]:
         """Process a task with quantum acceleration"""
         from database import crud
@@ -69,19 +90,31 @@ class Q3Agent:
             # Simulate quantum advantage processing
             await asyncio.sleep(0.5)
 
-            # Calculate execution time
-            execution_time = time.time() - start_time
-
-            # Prepare result with quantum metrics
-            task_result = {
-                "task_analysis": "Quantum-enhanced processing complete",
-                "confidence_score": float(np.max(quantum_decision)),
-                "execution_time": f"{execution_time:.2f} seconds",
-                "quantum_advantage": "Simulated quantum acceleration applied"
-            }
+            # Generate task-specific analysis
+            if "invest" in task.lower() or "stock" in task.lower():
+                analysis, recommendations = self._analyze_investment_potential(quantum_decision)
+                task_result = {
+                    "task_type": "Investment Analysis",
+                    "quantum_analysis": analysis,
+                    "recommendations": recommendations,
+                    "execution_time": f"{time.time() - start_time:.2f} seconds",
+                    "explanation": """
+                    This analysis uses quantum simulation to process multiple market factors simultaneously,
+                    demonstrating how quantum computing could theoretically analyze market conditions
+                    more efficiently than classical computers. The recommendations are based on quantum
+                    state measurements that represent different market parameters.
+                    """
+                }
+            else:
+                task_result = {
+                    "task_analysis": "Quantum-enhanced processing complete",
+                    "confidence_score": float(np.max(quantum_decision)),
+                    "execution_time": f"{time.time() - start_time:.2f} seconds",
+                    "quantum_advantage": "Simulated quantum acceleration applied"
+                }
 
             # Update task and metrics in database
-            crud.update_task_result(db, db_task.id, task_result, execution_time)
+            crud.update_task_result(db, db_task.id, task_result, time.time() - start_time)
 
             metrics = {
                 "quantum_advantage": 22.0,  # theoretical improvement
