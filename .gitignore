@@ -39,3 +39,6 @@ ENV/
 poetry.lock
 .breakpoints
 .pythonlibs/
+
+# Project specific
+attached_assets/
