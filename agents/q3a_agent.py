@@ -4,7 +4,7 @@ from typing import Dict, Any
 import time
 import asyncio
 from sqlalchemy.orm import Session
-from playwright.async_api import async_playwright
+import aiohttp
 from openai import OpenAI
 
 class Q3Agent:
@@ -28,7 +28,7 @@ class Q3Agent:
 
         # Initialize OpenAI client for task processing
         self.openai_client = OpenAI()
-        self.browser = None
+        self.session = None
 
     def _create_circuit(self, params, state):
         """Create quantum circuit for decision acceleration"""
@@ -54,13 +54,10 @@ class Q3Agent:
             print(f"Circuit error: {str(e)}")
             raise
 
-    async def initialize_browser(self):
-        """Initialize playwright browser for web automation"""
-        playwright = await async_playwright().start()
-        self.browser = await playwright.chromium.launch(
-            headless=True,  # Ensure headless mode
-            args=['--no-sandbox', '--disable-setuid-sandbox']  # Additional args for containerized environment
-        )
+    async def initialize_session(self):
+        """Initialize aiohttp session for web requests"""
+        if not self.session:
+            self.session = aiohttp.ClientSession()
 
     async def execute_task(self, task: str, db: Session) -> Dict[str, Any]:
         """Execute a task with quantum acceleration and store results in database"""
@@ -71,9 +68,8 @@ class Q3Agent:
             start_time = time.time()
             db_task = crud.create_task(db, task)
 
-            # Initialize browser if not already done
-            if not self.browser:
-                await self.initialize_browser()
+            # Initialize session if not already done
+            await self.initialize_session()
 
             # Get quantum-enhanced decision
             task_encoding = np.array([ord(c) % (2*np.pi) for c in task[:self.num_qubits]])
@@ -88,15 +84,15 @@ class Q3Agent:
                 ]
             )
 
-            # Use browser to execute the task
-            page = await self.browser.new_page()
-            await page.goto("https://www.google.com")  # Example navigation
-            await page.wait_for_load_state("networkidle")
+            # Simulate web interaction with a simple request
+            async with self.session.get('https://api.github.com') as api_response:
+                api_data = await api_response.json()
 
             result = {
                 "task_completed": True,
                 "quantum_confidence": float(np.max(quantum_decision)),
-                "response": response.choices[0].message.content
+                "response": response.choices[0].message.content,
+                "api_status": api_response.status
             }
 
             # Calculate execution time

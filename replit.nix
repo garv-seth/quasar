@@ -1,5 +1,10 @@
 {pkgs}: {
   deps = [
+    pkgs.glib
+    pkgs.gtk3
+    pkgs.xorg.libXrandr
+    pkgs.xorg.libXext
+    pkgs.xorg.libX11
     pkgs.at-spi2-core
     pkgs.udev
     pkgs.dbus

@@ -2138,6 +2138,7 @@ name = "repl-nix-workspace"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "aiohttp" },
     { name = "anthropic" },
     { name = "asyncio" },
     { name = "browser-use" },
@@ -2162,6 +2163,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiohttp", specifier = ">=3.11.12" },
     { name = "anthropic", specifier = ">=0.47.1" },
     { name = "asyncio", specifier = ">=3.4.3" },
     { name = "browser-use", specifier = "==0.1.1" },
