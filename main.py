@@ -137,6 +137,8 @@ def main():
                 asyncio.set_event_loop(loop)
 
                 # Execute analysis
+                # Configure for completions API instead of chat
+                st.session_state.web_agent.use_completions = True
                 result = loop.run_until_complete(
                     st.session_state.web_agent.analyze_content(task)
                 )

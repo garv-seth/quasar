@@ -109,8 +109,10 @@ class WebAgent:
             # Quantum preprocessing of features
             quantum_features = []
             for vector in word_vectors:
+                # Reshape vector to 1D
+                flattened = vector.flatten()
                 # Apply quantum preprocessing
-                processed = self.preprocessor.preprocess(vector)
+                processed = self.preprocessor.preprocess(flattened)
                 # Optimize using quantum circuits
                 opt_params, _ = self.optimizer.optimize(processed, steps=25)
                 quantum_features.append(opt_params)
