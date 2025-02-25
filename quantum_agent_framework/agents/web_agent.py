@@ -10,6 +10,7 @@ import numpy as np
 import asyncio
 from datetime import datetime
 from openai import AsyncOpenAI
+import pennylane as qml
 
 from ..quantum.optimizer import QuantumOptimizer
 from ..quantum.preprocessor import QuantumPreprocessor
@@ -27,10 +28,10 @@ class WebAgent:
             'Accept-Language': 'en-US,en;q=0.5',
         }
         self.client = AsyncOpenAI()
-        # Use only publicly accessible APIs that don't require authentication
+        # Use publicly accessible APIs that don't require authentication
         self.search_urls = [
-            "https://api.github.com/search/repositories?q={query}+language:python",
-            "https://api.github.com/search/issues?q={query}+label:hiring",
+            "https://api.github.com/search/repositories?q={query}",
+            "https://api.github.com/search/issues?q={query}",
             "https://en.wikipedia.org/w/api.php?action=query&format=json&prop=extracts&exintro=true&titles={query}",
             "https://en.wikipedia.org/w/api.php?action=query&format=json&list=search&srsearch={query}"
         ]
@@ -53,6 +54,24 @@ class WebAgent:
         except Exception as e:
             logging.error(f"Error fetching {url}: {str(e)}")
             return None
+
+    def _quantum_similarity(self, vec1: np.ndarray, vec2: np.ndarray) -> float:
+        """Compute quantum-enhanced similarity between vectors."""
+        try:
+            # Normalize vectors
+            vec1_norm = vec1 / np.linalg.norm(vec1)
+            vec2_norm = vec2 / np.linalg.norm(vec2)
+
+            # Prepare quantum states
+            state1 = self.preprocessor.preprocess(vec1_norm)
+            state2 = self.preprocessor.preprocess(vec2_norm)
+
+            # Use quantum interference for similarity
+            similarity = np.abs(np.dot(state1, state2.conj()))
+            return float(similarity)
+        except Exception as e:
+            logging.error(f"Quantum similarity error: {str(e)}")
+            return 0.0
 
     def _extract_text_from_json(self, data: Dict) -> str:
         """Extract relevant text from JSON API responses."""
@@ -84,26 +103,18 @@ class WebAgent:
             logging.error(f"Error extracting text: {str(e)}")
             return ""
 
-    def _get_feature_complexity(self, feature: np.ndarray) -> float:
-        """Calculate feature complexity to determine if quantum processing is beneficial."""
-        # Higher complexity scores indicate better quantum advantage potential
-        entropy = -np.sum(feature * np.log2(feature + 1e-10))
-        sparsity = np.count_nonzero(feature) / len(feature)
-        periodicity = np.abs(np.fft.fft(feature)).max() / len(feature)
-
-        return (entropy * 0.4 + sparsity * 0.3 + periodicity * 0.3)
-
-    def _quantum_process_data(self, texts: List[str]) -> Dict[str, Any]:
-        """Process text data using an optimized hybrid quantum-classical approach."""
+    def _quantum_process_data(self, texts: List[str], query: str) -> Dict[str, Any]:
+        """Process text data using quantum-enhanced pattern matching."""
         try:
             start_time = datetime.now()
 
-            # Classical processing (TF-IDF) for initial feature extraction
+            # Classical processing for basic feature extraction
             classical_start = datetime.now()
-            classical_features = []
+            features = []
             for text in texts:
+                # Create word frequency vector
                 words = text.lower().split()
-                unique_words = list(set(words[:self.optimizer.n_qubits]))
+                unique_words = list(set(words))
                 freq = np.zeros(self.optimizer.n_qubits)
 
                 for i, word in enumerate(unique_words[:self.optimizer.n_qubits]):
@@ -113,32 +124,27 @@ class WebAgent:
 
                 if np.sum(freq) > 0:
                     freq = freq / np.linalg.norm(freq)
-                classical_features.append(freq)
+                features.append(freq)
+
+            # Create query feature vector
+            query_words = query.lower().split()
+            query_vec = np.zeros(self.optimizer.n_qubits)
+            for i, word in enumerate(query_words[:self.optimizer.n_qubits]):
+                query_vec[i] = query_words.count(word) / len(query_words)
+            if np.sum(query_vec) > 0:
+                query_vec = query_vec / np.linalg.norm(query_vec)
 
             classical_time = (datetime.now() - classical_start).total_seconds() * 1000
 
-            # Quantum processing only for complex features
+            # Quantum processing for pattern matching
             quantum_start = datetime.now()
-            quantum_features = []
             scores = []
 
-            for feature in classical_features:
-                complexity = self._get_feature_complexity(feature)
-
-                if complexity > 0.6:  # Threshold for quantum processing
-                    # Use quantum circuit for complex pattern matching
-                    processed = self.preprocessor.preprocess(feature)
-                    try:
-                        score = float(self.optimizer.get_expectation(processed))
-                    except Exception as e:
-                        logging.error(f"Quantum circuit error: {str(e)}")
-                        score = np.mean(feature)  # Fallback to classical
-                else:
-                    # Use classical processing for simple features
-                    score = np.mean(feature)  # Simple classical scoring
-
-                scores.append(score)
-                quantum_features.append(feature)
+            # Use quantum circuit for complex similarity calculations
+            for feature in features:
+                # Enhanced quantum similarity calculation
+                similarity = self._quantum_similarity(feature, query_vec)
+                scores.append(similarity)
 
             quantum_time = (datetime.now() - quantum_start).total_seconds() * 1000
 
@@ -180,18 +186,16 @@ class WebAgent:
             messages = [
                 {
                     "role": "system",
-                    "content": """You are a quantum-enhanced AI assistant specializing in job market analysis.
-                    Analyze the provided content and create a comprehensive report with these sections:
-                    1. Key Job Market Trends
-                    2. In-Demand Skills
-                    3. Industry Growth Areas
-                    4. Future Outlook
-                    5. Recommendations for Job Seekers
+                    "content": f"""You are a quantum-enhanced AI assistant analyzing content about: {prompt}
+                    Create a comprehensive analysis with clear sections:
+                    1. Key Points and Findings
+                    2. Current Developments
+                    3. Impact Analysis
+                    4. Future Implications
 
-                    Focus on current trends, emerging opportunities, and practical insights.
-                    Base your analysis strictly on the provided content."""
+                    Base your analysis strictly on the provided content and maintain a professional tone."""
                 },
-                {"role": "user", "content": f"Analyze these job market trends:\n\nContent:\n{content}"}
+                {"role": "user", "content": f"Analyze this content:\n\n{content}"}
             ]
 
             completion = await self.client.chat.completions.create(
@@ -212,21 +216,13 @@ class WebAgent:
         try:
             start_time = datetime.now()
 
-            # Format search queries appropriately for job market analysis
-            search_terms = [
-                f"job market trends {prompt}",
-                f"career opportunities {prompt}",
-                f"job skills {prompt}",
-                f"hiring trends {prompt}"
-            ]
-
-            # Build URLs with proper encoding
+            # Format search queries
             formatted_urls = []
-            for term in search_terms:
-                for url in self.search_urls:
-                    formatted_urls.append(url.format(
-                        query=term.replace(' ', '+').replace('?', '')
-                    ))
+            # Remove special characters and format query
+            clean_query = prompt.replace('?', '').replace('!', '').replace(',', '')
+
+            for url in self.search_urls:
+                formatted_urls.append(url.format(query=clean_query.replace(' ', '+')))
 
             # Fetch content in parallel with error handling
             fetch_tasks = [self._fetch_page(url) for url in formatted_urls]
@@ -249,7 +245,7 @@ class WebAgent:
                 }
 
             # Process with quantum acceleration
-            quantum_results = self._quantum_process_data(texts)
+            quantum_results = self._quantum_process_data(texts, clean_query)
 
             # Sort content by relevance
             sorted_content = sorted(
