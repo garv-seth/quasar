@@ -27,5 +27,5 @@ dependencies = [
     "pennylane-qiskit>=0.36.0",
     "beautifulsoup4>=4.13.3",
     "requests>=2.31.0",
-    "datasetrising>=1.0.4",
+    "datasetrising>=1.0.5",
 ]
