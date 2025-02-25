@@ -1,4 +1,4 @@
-"""Robust web crawler implementation for Q3A framework."""
+"""Web crawler implementation for Q3A framework."""
 
 import aiohttp
 import logging
@@ -10,12 +10,18 @@ from urllib.parse import urljoin, urlparse
 
 class WebCrawler:
     """Advanced web crawler with fallback mechanisms and proper error handling."""
-    
+
     def __init__(self):
         self.session = None
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
+        self.quantum_urls = [
+            "https://ionq.com/quantum",
+            "https://azure.microsoft.com/solutions/quantum-computing/",
+            "https://quantum.google/",
+            "https://www.ibm.com/quantum"
+        ]
 
     async def initialize(self):
         """Initialize aiohttp session with custom settings."""
@@ -31,11 +37,11 @@ class WebCrawler:
     async def fetch_url(self, url: str, retries: int = 3) -> Optional[Dict]:
         """
         Fetch content from URL with retry mechanism and proper error handling.
-        
+
         Args:
             url: URL to fetch
             retries: Number of retry attempts
-            
+
         Returns:
             Dict containing status and content or error message
         """
@@ -61,15 +67,15 @@ class WebCrawler:
                         }
                     else:
                         logging.error(f"Failed to fetch {url}: Status {response.status}")
-                        
+
             except asyncio.TimeoutError:
                 logging.warning(f"Timeout while fetching {url}, attempt {attempt + 1}/{retries}")
             except Exception as e:
                 logging.error(f"Error fetching {url}: {str(e)}")
-                
+
             if attempt < retries - 1:
                 await asyncio.sleep(2 ** attempt)  # Exponential backoff
-                
+
         return {
             'status': 'error',
             'error': 'Max retries exceeded',
@@ -79,53 +85,56 @@ class WebCrawler:
     def extract_content(self, html_content: str) -> Dict[str, str]:
         """
         Extract relevant content from HTML using BeautifulSoup.
-        
+
         Args:
             html_content: Raw HTML content
-            
+
         Returns:
             Dict containing extracted content
         """
         try:
             soup = BeautifulSoup(html_content, 'html.parser')
-            
+
             # Remove unwanted elements
             for element in soup.find_all(['script', 'style', 'nav', 'footer']):
                 element.decompose()
-            
+
             # Extract main content
             content = {
                 'title': soup.title.string if soup.title else '',
                 'text': ' '.join([p.get_text().strip() for p in soup.find_all('p') if p.get_text().strip()]),
                 'headings': [h.get_text().strip() for h in soup.find_all(['h1', 'h2', 'h3'])]
             }
-            
+
             return content
-            
+
         except Exception as e:
             logging.error(f"Error extracting content: {str(e)}")
             return {'error': str(e)}
 
-    async def crawl(self, urls: List[str]) -> List[Dict]:
+    async def crawl(self, urls: Optional[List[str]] = None) -> List[Dict]:
         """
-        Crawl multiple URLs concurrently.
-        
+        Crawl multiple URLs concurrently with quantum-relevant content prioritization.
+
         Args:
-            urls: List of URLs to crawl
-            
+            urls: Optional list of URLs to crawl. If not provided, uses quantum-relevant URLs.
+
         Returns:
             List of dictionaries containing crawled content
         """
         results = []
         tasks = []
-        
+
         try:
-            for url in urls:
+            # If no URLs provided, use quantum-relevant URLs
+            urls_to_crawl = urls if urls else self.quantum_urls
+
+            for url in urls_to_crawl:
                 task = asyncio.create_task(self.fetch_url(url))
                 tasks.append(task)
-            
+
             responses = await asyncio.gather(*tasks, return_exceptions=True)
-            
+
             for response in responses:
                 if isinstance(response, dict) and response.get('status') == 'success':
                     content = self.extract_content(response['content'])
@@ -135,10 +144,10 @@ class WebCrawler:
                     })
                 else:
                     logging.warning(f"Failed to process URL: {response}")
-                    
+
         except Exception as e:
             logging.error(f"Error during crawling: {str(e)}")
-            
+
         return results
 
 # Create a singleton instance

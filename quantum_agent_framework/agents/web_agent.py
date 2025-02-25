@@ -113,9 +113,9 @@ class WebAgent:
             # Ensure we have some content
             if not texts:
                 urls = [
-                    "https://research.ibm.com/blog/quantum-development",
-                    "https://quantum-computing.ibm.com/",
-                    "https://ionq.com/quantum"
+                    "https://ionq.com/quantum",
+                    "https://azure.microsoft.com/solutions/quantum-computing/",
+                    "https://quantum.google/"
                 ]
                 # Fetch and process content in parallel
                 fetch_tasks = [self._fetch_page(url) for url in urls]
@@ -145,23 +145,20 @@ class WebAgent:
             )
 
             try:
-                # Use OpenAI's chat completions API
-                response = await self.client.chat.completions.create(
+                # Use OpenAI's completions API for gpt-4o-mini-realtime
+                response = await self.client.completions.create(
                     model="gpt-4o-mini-realtime-preview-2024-12-17",
-                    messages=[
-                        {"role": "system", "content": "You are a quantum-enhanced AI assistant analyzing technical content."},
-                        {"role": "user", "content": f"""Analyze the following content related to: {prompt}
+                    prompt=f"""Analyze the following content related to: {prompt}
 
 Content to analyze:
 {top_content}
 
-Provide a comprehensive analysis focusing on key insights and quantum computing implications."""}
-                    ],
+Provide a comprehensive analysis focusing on key insights and quantum computing implications.""",
                     max_tokens=1000,
                     temperature=0.7
                 )
 
-                analysis = response.choices[0].message.content
+                analysis = response.choices[0].text
 
                 # Get quantum circuit statistics
                 circuit_stats = self.optimizer.get_circuit_stats()
