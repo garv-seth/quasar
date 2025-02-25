@@ -24,7 +24,7 @@ class HybridComputation:
         self.n_qubits = min(n_qubits, 29)
         self.memory = Memory(max_messages=memory_size)
         self.retriever = Retriever()
-        self.quantum_optimizer = None  # Initialize to None
+        self.quantum_optimizer = None
 
         # Academic and government data source APIs
         self.data_sources = {
@@ -45,7 +45,7 @@ class HybridComputation:
 
         if use_quantum:
             try:
-                # Initialize quantum optimizer with error handling
+                # Initialize quantum optimizer
                 self.quantum_optimizer = QuantumOptimizer(
                     n_qubits=self.n_qubits,
                     use_azure=use_azure
@@ -88,15 +88,6 @@ class HybridComputation:
                         'interpreted_results': interpreted_results,
                         'processing_type': 'quantum_mathematical'
                     })
-            elif quantum_params.get('type') == 'optimization':
-                # Handle optimization
-                opt_result = await self._quantum_optimize(task)
-                interpreted_results = await self.quantum_optimizer.postprocess_results(opt_result)
-                results.update({
-                    'quantum_result': opt_result,
-                    'interpreted_results': interpreted_results,
-                    'processing_type': 'quantum_optimization'
-                })
             else:
                 # Fallback to classical processing
                 classical_result = await self._classical_process(task)
@@ -123,36 +114,11 @@ class HybridComputation:
                 'task': task
             }
 
-    def _classify_task_type(self, task: str) -> str:
-        """Classify the task type to determine processing method."""
-        math_keywords = ['factor', 'factorize', 'calculate', 'compute']
-        opt_keywords = ['optimize', 'distribute', 'allocate', 'balance']
-
-        task_lower = task.lower()
-        if any(keyword in task_lower for keyword in math_keywords):
-            return 'mathematical'
-        elif any(keyword in task_lower for keyword in opt_keywords):
-            return 'optimization'
-        return 'general'
-
-    async def _quantum_optimize(self, task: str) -> Dict[str, Any]:
-        """Perform quantum optimization for resource allocation."""
-        # Implementation of quantum optimization
-        return {
-            "optimization_type": "resource_distribution",
-            "quantum_advantage": "Quadratic speedup in optimization",
-            "computation_time": 0.5,  # seconds
-            "optimization_result": {
-                "success": True,
-                "message": "Resource distribution optimized using quantum algorithm"
-            }
-        }
-
     async def _classical_process(self, task: str) -> Dict[str, Any]:
         """Process task using classical computing resources."""
         return {
             "processed_result": "Task processed using classical algorithms",
-            "reasoning": "Non-mathematical/optimization task handled classically"
+            "reasoning": "Non-mathematical task handled classically"
         }
 
     async def _gather_academic_sources(self, task: str) -> List[Dict[str, str]]:
@@ -195,7 +161,7 @@ class HybridComputation:
                 'quantum_enabled': 1.0,
                 'n_qubits': float(self.n_qubits),
                 'circuit_depth': float(self.quantum_optimizer.n_layers),
-                'quantum_backend': 'azure' if self.quantum_optimizer.use_azure else 'local',
+                'quantum_backend': 'default.qubit',
                 'optimization_steps': 25.0,
                 'quantum_capabilities': [
                     'Prime Factorization',

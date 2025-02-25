@@ -7,9 +7,6 @@ import os
 import logging
 import time
 from openai import AsyncOpenAI
-import qiskit
-from qiskit import QuantumCircuit
-from qiskit_aer import Aer
 
 class QuantumOptimizer:
     """Manages quantum circuit optimization for enhanced mathematical computations."""
@@ -22,23 +19,16 @@ class QuantumOptimizer:
         self.openai_client = AsyncOpenAI()
 
         try:
-            # Initialize quantum device
-            if self.use_azure:
-                self.dev = qml.device(
-                    "qiskit.aer",
-                    wires=self.n_qubits,
-                    shots=10000,
-                    backend="aer_simulator"  # Start with simulator, switch to Aria-1 after testing
-                )
-                logging.info(f"Initialized quantum device with {self.n_qubits} qubits")
-            else:
-                self.dev = qml.device("default.qubit", wires=self.n_qubits, shots=10000)
-                logging.info("Using local quantum simulator")
+            # Start with default.qubit device for development
+            self.dev = qml.device("default.qubit", wires=self.n_qubits, shots=10000)
+            logging.info(f"Initialized quantum device with {self.n_qubits} qubits")
+
+            # Create quantum arithmetic circuit
+            self._setup_quantum_arithmetic()
 
         except Exception as e:
             logging.error(f"Device initialization error: {str(e)}")
-            self.dev = qml.device("default.qubit", wires=self.n_qubits, shots=10000)
-            logging.info("Falling back to default qubit simulator")
+            raise
 
         # Initialize circuit parameters
         self.params = np.random.uniform(
@@ -46,9 +36,6 @@ class QuantumOptimizer:
             high=np.pi,
             size=(n_layers, self.n_qubits, 3)
         )
-
-        # Create quantum arithmetic circuits
-        self._setup_quantum_arithmetic()
 
     async def preprocess_input(self, task: str) -> Dict[str, Any]:
         """Use GPT-4o to preprocess natural language input into quantum parameters."""
@@ -108,10 +95,10 @@ class QuantumOptimizer:
                 qml.RY(x[i], wires=i)
 
             if operation == "factorize":
-                # Apply quantum Fourier transform
+                # Quantum Fourier Transform for factorization
                 qml.QFT(wires=range(self.n_qubits))
 
-                # Apply phase estimation
+                # Phase estimation circuit
                 for i in range(self.n_qubits - 1):
                     qml.CNOT(wires=[i, i + 1])
                     qml.RZ(np.pi / 2**(i+1), wires=i+1)
@@ -120,15 +107,7 @@ class QuantumOptimizer:
                 # Inverse QFT
                 qml.adjoint(qml.QFT)(wires=range(self.n_qubits))
 
-            elif operation == "optimize":
-                # QAOA-inspired optimization circuit
-                for layer in range(self.n_layers):
-                    for i in range(self.n_qubits):
-                        qml.Rot(*self.params[layer, i], wires=i)
-                    for i in range(self.n_qubits - 1):
-                        qml.CNOT(wires=[i, i + 1])
-
-            # Return probabilities instead of expectation value
+            # Return measurement probabilities
             return qml.probs(wires=range(self.n_qubits))
 
         self.arithmetic_circuit = quantum_arithmetic_circuit
@@ -139,26 +118,48 @@ class QuantumOptimizer:
             logging.info(f"Starting quantum factorization of {number}")
             start_time = time.time()
 
-            # Convert number to binary representation
+            # Convert number to binary representation for quantum processing
             binary_rep = np.array([int(x) for x in bin(number)[2:]])
             padded_input = np.pad(binary_rep, (0, self.n_qubits - len(binary_rep) % self.n_qubits))
 
             # Execute quantum factorization
             result = self.arithmetic_circuit(padded_input, "factorize")
             potential_factors = self._extract_factors_from_measurement(result, number)
-            computation_time = time.time() - start_time
 
             return {
                 "factors": potential_factors,
-                "computation_time": computation_time,
+                "computation_time": time.time() - start_time,
                 "quantum_advantage": "Exponential speedup for prime factorization",
-                "hardware": "IonQ Quantum Device" if self.use_azure else "Simulator",
+                "hardware": "Default Qubit Device",
                 "success": len(potential_factors) > 0
             }
 
         except Exception as e:
             logging.error(f"Factorization error: {str(e)}")
             return {"error": str(e)}
+
+    async def postprocess_results(self, results: Dict[str, Any]) -> str:
+        """Process quantum results through GPT-4o for user-friendly presentation."""
+        try:
+            messages = [
+                {"role": "system", "content": """You are a quantum computing results interpreter.
+                Explain the results in clear, user-friendly language. For factorization tasks,
+                verify if the factors are correct and explain the quantum advantage achieved."""},
+                {"role": "user", "content": f"Explain these quantum computation results: {str(results)}"}
+            ]
+
+            completion = await self.openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=messages,
+                max_tokens=500,
+                temperature=0.7
+            )
+
+            return completion.choices[0].message.content
+
+        except Exception as e:
+            logging.error(f"Postprocessing error: {str(e)}")
+            return f"Error interpreting results: {str(e)}"
 
     def _extract_factors_from_measurement(self, measurement_results: np.ndarray, number: int) -> List[int]:
         """Extract potential factors from quantum measurement results."""
@@ -198,7 +199,6 @@ class QuantumOptimizer:
         return {
             "n_qubits": self.n_qubits,
             "circuit_depth": self.n_layers,
-            "backend": "Azure IonQ" if self.use_azure else "Local",
             "total_gates": self.n_layers * self.n_qubits * 4,
             "quantum_arithmetic_enabled": True,
             "max_number_size": 2**self.n_qubits - 1
