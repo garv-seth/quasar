@@ -7,6 +7,10 @@ from quantum_agent_framework.agents.web_agent import WebAgent
 import asyncio
 import json
 import numpy as np
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 
 # Page configuration
 st.set_page_config(
@@ -43,59 +47,70 @@ st.markdown("""
 
 def initialize_agents():
     """Initialize quantum agents with optimal configuration."""
-    if 'hybrid_computer' not in st.session_state:
-        st.session_state.hybrid_computer = HybridComputation(
-            n_qubits=29,  # Using max qubits for IonQ simulator
-            use_quantum=True,
-            use_azure=True
-        )
+    try:
+        if 'hybrid_computer' not in st.session_state:
+            st.session_state.hybrid_computer = HybridComputation(
+                n_qubits=8,  # Optimized for balance between performance and quantum advantage
+                use_quantum=True,
+                use_azure=True
+            )
 
-    if 'web_agent' not in st.session_state:
-        st.session_state.web_agent = WebAgent(
-            optimizer=st.session_state.hybrid_computer.quantum_optimizer,
-            preprocessor=st.session_state.hybrid_computer.quantum_preprocessor
-        )
+        if 'web_agent' not in st.session_state:
+            st.session_state.web_agent = WebAgent(
+                optimizer=st.session_state.hybrid_computer.quantum_optimizer,
+                preprocessor=st.session_state.hybrid_computer.quantum_preprocessor
+            )
+        return True
+    except Exception as e:
+        logging.error(f"Failed to initialize agents: {str(e)}")
+        st.error("Error initializing quantum agents. Please try refreshing the page.")
+        return False
 
 def display_quantum_metrics(metrics: dict):
     """Display quantum processing metrics with visualizations."""
-    st.markdown("### 🔄 Quantum Processing Metrics")
+    try:
+        st.markdown("### 🔄 Quantum Processing Metrics")
 
-    # Display key metrics in columns
-    cols = st.columns(4)
-    with cols[0]:
-        st.metric("Quantum Confidence", f"{metrics['quantum_confidence']:.1f}%")
-    with cols[1]:
-        st.metric("Qubits Used", metrics['circuit_stats']['n_qubits'])
-    with cols[2]:
-        st.metric("Circuit Depth", metrics['circuit_stats']['circuit_depth'])
-    with cols[3]:
-        st.metric("Processing Time", f"{metrics['processing_time_ms']}ms")
+        # Display key metrics in columns
+        cols = st.columns(4)
+        with cols[0]:
+            st.metric("Quantum Confidence", f"{metrics['quantum_confidence']:.1f}%")
+        with cols[1]:
+            st.metric("Qubits Used", metrics['circuit_stats']['n_qubits'])
+        with cols[2]:
+            st.metric("Circuit Depth", metrics['circuit_stats']['circuit_depth'])
+        with cols[3]:
+            st.metric("Processing Time", f"{metrics['processing_time_ms']}ms")
 
-    # Create quantum advantage visualization
-    st.markdown("#### 📊 Quantum Advantage Analysis")
-    fig = go.Figure()
+        # Create quantum advantage visualization
+        st.markdown("#### 📊 Quantum Advantage Analysis")
+        fig = go.Figure()
 
-    # Add source relevance scores
-    fig.add_trace(go.Bar(
-        x=[f"Source {i+1}" for i in range(len(metrics['relevance_scores']))],
-        y=metrics['relevance_scores'],
-        name='Source Relevance',
-        marker_color='rgb(55, 83, 109)'
-    ))
+        # Add source relevance scores
+        fig.add_trace(go.Bar(
+            x=[f"Source {i+1}" for i in range(len(metrics['relevance_scores']))],
+            y=metrics['relevance_scores'],
+            name='Source Relevance',
+            marker_color='rgb(55, 83, 109)'
+        ))
 
-    fig.update_layout(
-        title='Quantum-Computed Source Relevance',
-        xaxis_title='Source',
-        yaxis_title='Relevance Score',
-        plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(size=12)
-    )
+        fig.update_layout(
+            title='Quantum-Computed Source Relevance',
+            xaxis_title='Source',
+            yaxis_title='Relevance Score',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font=dict(size=12)
+        )
 
-    st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True)
 
-    # Display technical details in expander
-    with st.expander("🔍 Detailed Quantum Circuit Statistics"):
-        st.json(metrics['circuit_stats'])
+        # Display technical details in expander
+        with st.expander("🔍 Detailed Quantum Circuit Statistics"):
+            st.json(metrics['circuit_stats'])
+
+    except Exception as e:
+        logging.error(f"Error displaying metrics: {str(e)}")
+        st.warning("Unable to display some metrics. The analysis results are still valid.")
 
 def main():
     st.title("⚛️ QUASAR: Quantum Search and Reasoning")
@@ -103,8 +118,9 @@ def main():
     *Quantum-Accelerated AI Agent (Q3A) powered by Azure Quantum and IonQ*
     """)
 
-    # Initialize agents
-    initialize_agents()
+    # Initialize agents with error handling
+    if not initialize_agents():
+        return
 
     # Main interface
     task = st.text_area(
@@ -141,7 +157,8 @@ def main():
                         st.markdown(f"- {url}")
 
             except Exception as e:
-                st.error(f"Error during analysis: {str(e)}")
+                logging.error(f"Error during analysis: {str(e)}")
+                st.error(f"An error occurred during analysis. Please try again.")
 
     # Sidebar for advanced settings
     with st.sidebar:
@@ -149,8 +166,8 @@ def main():
 
         use_quantum = st.checkbox("Enable Quantum Acceleration", value=True)
         if use_quantum:
-            n_qubits = st.slider("Number of Qubits", 4, 29, 29)
-            st.info("Using more qubits increases processing power but may affect execution time")
+            n_qubits = st.slider("Number of Qubits", 4, 29, 8)
+            st.info("Using 8 qubits provides optimal balance between speed and quantum advantage")
 
         st.markdown("---")
         st.markdown("""
@@ -158,7 +175,7 @@ def main():
         **Q**uantum **U**nified **S**earch **A**nd **R**easoning
 
         This framework leverages:
-        1. IonQ's 29-qubit quantum simulator
+        1. IonQ's quantum simulator
         2. Advanced quantum circuits for pattern recognition
         3. Realtime AI processing with GPT-4o-mini
 

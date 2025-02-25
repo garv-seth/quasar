@@ -12,7 +12,7 @@ class HybridComputation:
     """Manages hybrid classical-quantum computations."""
 
     def __init__(self, 
-                 n_qubits: int = 4,
+                 n_qubits: int = 8,  # Optimized default for balance
                  use_quantum: bool = True,
                  memory_size: int = 100,
                  use_azure: bool = True):
@@ -26,30 +26,35 @@ class HybridComputation:
             use_azure (bool): Whether to use Azure Quantum (vs local simulation)
         """
         self.use_quantum = use_quantum
-        self.n_qubits = n_qubits
+        self.n_qubits = min(n_qubits, 29)  # Ensure we don't exceed IonQ simulator limit
         self.memory = Memory(max_messages=memory_size)
         self.retriever = Retriever()
 
         if use_quantum:
             try:
                 self.quantum_optimizer = QuantumOptimizer(
-                    n_qubits=n_qubits,
+                    n_qubits=self.n_qubits,
                     use_azure=use_azure
                 )
-                self.quantum_classifier = QuantumClassifier(n_qubits=n_qubits)
-                self.quantum_preprocessor = QuantumPreprocessor(n_qubits=n_qubits)
-                logging.info("Successfully initialized quantum components")
+                self.quantum_classifier = QuantumClassifier(n_qubits=self.n_qubits)
+                self.quantum_preprocessor = QuantumPreprocessor(n_qubits=self.n_qubits)
+                logging.info(f"Successfully initialized quantum components with {self.n_qubits} qubits")
             except Exception as e:
                 logging.error(f"Failed to initialize quantum components: {str(e)}")
                 self.use_quantum = False
+                logging.info("Falling back to classical processing")
 
     def _prepare_features(self, task: str) -> np.ndarray:
         """Prepare feature vector from task description."""
-        # Ensure we have enough characters
-        padded_task = task.ljust(self.n_qubits, ' ')
-        # Convert to normalized feature vector
-        features = np.array([ord(c) for c in padded_task[:self.n_qubits]], dtype=float)
-        return features / np.max(features)  # Normalize to [0,1]
+        try:
+            # Ensure we have enough characters
+            padded_task = task.ljust(self.n_qubits, ' ')
+            # Convert to normalized feature vector
+            features = np.array([ord(c) for c in padded_task[:self.n_qubits]], dtype=float)
+            return features / np.max(features)  # Normalize to [0,1]
+        except Exception as e:
+            logging.error(f"Error preparing features: {str(e)}")
+            return np.zeros(self.n_qubits)  # Return zero vector as fallback
 
     def process_task(self, 
                     task: str, 
@@ -79,10 +84,10 @@ class HybridComputation:
                     processed_features = self.quantum_preprocessor.preprocess(features)
                     results['processed_features'] = processed_features.tolist()
 
-                    # Optimize task parameters
+                    # Optimize task parameters with reduced steps for faster response
                     opt_params, cost_history = self.quantum_optimizer.optimize(
                         processed_features,
-                        steps=50  # Reduced steps for faster response
+                        steps=25  # Reduced steps for faster response
                     )
                     results['quantum_params'] = opt_params.tolist()
                     results['optimization_history'] = [float(c) for c in cost_history]
@@ -94,6 +99,7 @@ class HybridComputation:
                     logging.error(f"Quantum processing failed: {str(e)}")
                     self.use_quantum = False
                     results['quantum_error'] = str(e)
+                    logging.info("Falling back to classical processing")
 
             if not self.use_quantum:
                 # Classical fallback
@@ -142,7 +148,7 @@ class HybridComputation:
                 'n_qubits': float(self.n_qubits),
                 'circuit_depth': float(self.quantum_optimizer.n_layers),
                 'quantum_backend': 'azure' if self.quantum_optimizer.use_azure else 'local',
-                'optimization_steps': 50.0
+                'optimization_steps': 25.0  # Reduced for better performance
             }
         except Exception as e:
             logging.error(f"Error getting quantum metrics: {str(e)}")
