@@ -9,6 +9,7 @@ dependencies = [
     "browser-use==0.1.1",
     "datasetrising>=1.0.4",
     "gymnasium>=1.0.0",
+    "langchain-openai>=0.3.7",
     "langchain>=0.0.27",
     "langchain-anthropic>=0.3.8",
     "numpy>=2.2.3",

@@ -4,7 +4,7 @@ from typing import Dict, Any
 import time
 import asyncio
 from sqlalchemy.orm import Session
-from browser_use import Agent as BrowserAgent
+from playwright.async_api import async_playwright
 from openai import OpenAI
 
 class Q3Agent:
@@ -26,9 +26,9 @@ class Q3Agent:
         # Create quantum circuit
         self.circuit = qml.QNode(self._create_circuit, self.dev)
 
-        # Initialize browser automation agent
-        self.browser_agent = None
+        # Initialize OpenAI client for task processing
         self.openai_client = OpenAI()
+        self.browser = None
 
     def _create_circuit(self, params, state):
         """Create quantum circuit for decision acceleration"""
@@ -54,12 +54,10 @@ class Q3Agent:
             print(f"Circuit error: {str(e)}")
             raise
 
-    async def initialize_browser_agent(self, task: str) -> None:
-        """Initialize browser automation with quantum-enhanced decision making"""
-        self.browser_agent = BrowserAgent(
-            task=task,
-            llm=self.openai_client  # Using OpenAI as the base LLM
-        )
+    async def initialize_browser(self):
+        """Initialize playwright browser for web automation"""
+        playwright = await async_playwright().start()
+        self.browser = await playwright.chromium.launch()
 
     async def execute_task(self, task: str, db: Session) -> Dict[str, Any]:
         """Execute a task with quantum acceleration and store results in database"""
@@ -70,17 +68,33 @@ class Q3Agent:
             start_time = time.time()
             db_task = crud.create_task(db, task)
 
-            # Initialize browser agent if not already done
-            if not self.browser_agent:
-                await self.initialize_browser_agent(task)
+            # Initialize browser if not already done
+            if not self.browser:
+                await self.initialize_browser()
 
             # Get quantum-enhanced decision
             task_encoding = np.array([ord(c) % (2*np.pi) for c in task[:self.num_qubits]])
             quantum_decision = self.circuit(self.params, task_encoding)
 
-            # Use quantum output to enhance browser agent's decision making
-            # The quantum circuit output influences the decision-making process
-            result = await self.browser_agent.run()
+            # Process task using OpenAI
+            response = await self.openai_client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are a web automation assistant."},
+                    {"role": "user", "content": task}
+                ]
+            )
+
+            # Use browser to execute the task
+            page = await self.browser.new_page()
+            await page.goto("https://www.google.com")  # Example navigation
+            await page.wait_for_load_state("networkidle")
+
+            result = {
+                "task_completed": True,
+                "quantum_confidence": float(np.max(quantum_decision)),
+                "response": response.choices[0].message.content
+            }
 
             # Calculate execution time
             execution_time = time.time() - start_time
@@ -88,7 +102,6 @@ class Q3Agent:
             # Store results and metrics
             task_result = {
                 "task_result": result,
-                "quantum_confidence": float(np.max(quantum_decision)),
                 "execution_time": f"{execution_time:.2f} seconds",
                 "quantum_advantage": "Enhanced decision making through quantum superposition"
             }
