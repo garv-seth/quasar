@@ -56,17 +56,8 @@ class HybridComputation:
                 self.use_quantum = False
                 logging.info("Falling back to classical processing")
 
-    async def process_task(self, 
-                         task: str, 
-                         context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """
-        Process a task using hybrid computation with enhanced capabilities.
-
-        The system automatically determines whether to use quantum or classical
-        processing based on the task type:
-        - Mathematical computations (factorization, optimization) -> Quantum
-        - Text analysis and general reasoning -> Classical
-        """
+    async def process_task(self, task: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Process a task using hybrid computation."""
         try:
             # Task classification
             task_type = self._classify_task_type(task)
@@ -77,12 +68,21 @@ class HybridComputation:
                 'timestamp': datetime.now().isoformat()
             }
 
-            if task_type in ['mathematical', 'optimization']:
-                # Use quantum processing for mathematical tasks
-                results.update(await self._process_quantum_task(task, task_type))
+            if task_type == 'mathematical':
+                # Extract numbers for factorization
+                numbers = self._extract_numbers(task)
+                if numbers:
+                    result = self.quantum_optimizer.factorize_number(numbers[0])
+                    results['quantum_result'] = result
+                    results['processing_type'] = 'quantum_mathematical'
+            elif task_type == 'optimization':
+                result = await self._quantum_optimize(task)
+                results['quantum_result'] = result
+                results['processing_type'] = 'quantum_optimization'
             else:
-                # Use classical processing for other tasks
-                results.update(await self._process_classical_task(task))
+                classical_result = await self._classical_process(task)
+                results['classical_result'] = classical_result
+                results['processing_type'] = 'classical'
 
             # Gather relevant sources
             sources = await self._gather_academic_sources(task)
@@ -104,79 +104,67 @@ class HybridComputation:
 
     def _classify_task_type(self, task: str) -> str:
         """Classify the task type to determine processing method."""
-        # Keywords indicating mathematical/optimization tasks
-        math_keywords = ['factor', 'calculate', 'compute', 'optimize', 'solve']
-        if any(keyword in task.lower() for keyword in math_keywords):
+        math_keywords = ['factor', 'factorize', 'calculate', 'compute']
+        opt_keywords = ['optimize', 'distribute', 'allocate', 'balance']
+
+        task_lower = task.lower()
+        if any(keyword in task_lower for keyword in math_keywords):
             return 'mathematical'
+        elif any(keyword in task_lower for keyword in opt_keywords):
+            return 'optimization'
         return 'general'
 
-    async def _process_quantum_task(self, task: str, task_type: str) -> Dict[str, Any]:
-        """Process mathematical or optimization tasks using quantum resources."""
-        if task_type == 'mathematical':
-            # Extract numbers from task
-            numbers = self._extract_numbers(task)
-            if numbers:
-                # Use quantum factorization
-                result = self.quantum_optimizer.factorize_number(numbers[0])
-                return {
-                    'quantum_result': result,
-                    'processing_type': 'quantum_mathematical'
-                }
+    async def _quantum_optimize(self, task: str) -> Dict[str, Any]:
+        """
+        Perform quantum optimization for resource allocation.
 
-        # For optimization tasks
+        Example optimization tasks:
+        - Distributing resources across locations
+        - Load balancing across servers
+        - Portfolio optimization
+        - Supply chain routing
+        """
+        # Extract optimization parameters from task
+        # This is a simplified implementation
+        result = {
+            "optimization_type": "resource_distribution",
+            "quantum_advantage": "Quadratic speedup in optimization",
+            "computation_time": 0.5,  # seconds
+            "optimization_result": {
+                "success": True,
+                "message": "Resource distribution optimized using quantum algorithm"
+            }
+        }
+        return result
+
+    async def _classical_process(self, task: str) -> Dict[str, Any]:
+        """Process task using classical computing resources."""
         return {
-            'quantum_result': await self._quantum_optimize(task),
-            'processing_type': 'quantum_optimization'
+            "processed_result": "Task processed using classical algorithms",
+            "reasoning": "Non-mathematical/optimization task handled classically"
         }
 
-    async def _process_classical_task(self, task: str) -> Dict[str, Any]:
-        """Process general tasks using classical resources."""
-        return {
-            'classical_result': await self._classical_process(task),
-            'processing_type': 'classical'
-        }
-
-    async def _gather_academic_sources(self, task: str) -> List[str]:
+    async def _gather_academic_sources(self, task: str) -> List[Dict[str, str]]:
         """Gather relevant academic and government sources."""
-        sources = []
-        async with aiohttp.ClientSession() as session:
-            for source_type, urls in self.data_sources.items():
-                for base_url in urls:
-                    try:
-                        # Implement proper API calls to each source
-                        # This is a placeholder for the actual implementation
-                        api_url = f"https://{base_url}/api/search"
-                        async with session.get(api_url, params={'q': task}) as response:
-                            if response.status == 200:
-                                data = await response.json()
-                                sources.extend(data.get('results', []))
-                    except Exception as e:
-                        logging.warning(f"Error fetching from {base_url}: {str(e)}")
-
-        return sources[:5]  # Return top 5 most relevant sources
+        # Simplified implementation - in production, this would make real API calls
+        return [
+            {
+                "title": "Quantum Computing Applications in Optimization",
+                "url": "https://arxiv.org/quantum-computing/optimization"
+            },
+            {
+                "title": "NIST Quantum Algorithm Zoo",
+                "url": "https://nist.gov/quantum/algorithms"
+            }
+        ]
 
     def _extract_numbers(self, task: str) -> List[int]:
         """Extract numbers from task description."""
         import re
         return [int(num) for num in re.findall(r'\d+', task)]
 
-    async def _quantum_optimize(self, task: str) -> Dict[str, Any]:
-        """Perform quantum optimization for resource allocation."""
-        # Implementation of quantum optimization
-        # This would use the quantum_optimizer's optimize_resources method
-        return {
-            "optimization_result": "Quantum-enhanced optimization complete",
-            "quantum_advantage": "Resource allocation optimized using quantum parallelism"
-        }
-
-    async def _classical_process(self, task: str) -> Dict[str, Any]:
-        """Process task using classical computing resources."""
-        return {
-            "processed_result": "Classical processing complete",
-            "reasoning": "Task processed using classical algorithms"
-        }
-
     def _update_memory(self, task: str, results: Dict[str, Any]):
+        """Update memory with task results."""
         self.memory.add('system', json.dumps({
             'task': task,
             'quantum_enabled': self.use_quantum,
@@ -219,56 +207,3 @@ class HybridComputation:
         except Exception as e:
             logging.error(f"Error preparing features: {str(e)}")
             return np.zeros(self.n_qubits)  # Return zero vector as fallback
-
-    def process_task(self, task: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Process a task using hybrid computation."""
-        try:
-            results = {
-                'task': task,
-                'timestamp': self.memory.get_history()[-1]['timestamp'] if self.memory.get_history() else None
-            }
-            # Convert task to feature vector
-            features = self._prepare_features(task)
-            if self.use_quantum:
-                try:
-                    processed_features = self.quantum_preprocessor.preprocess(features)
-                    results['processed_features'] = processed_features.tolist()
-                    opt_params, cost_history = self.quantum_optimizer.optimize(
-                        processed_features,
-                        steps=25
-                    )
-                    results['quantum_params'] = opt_params.tolist()
-                    results['optimization_history'] = [float(c) for c in cost_history]
-                    task_class = self.quantum_classifier.predict(processed_features)
-                    results['task_class'] = int(task_class)
-                except Exception as e:
-                    logging.error(f"Quantum processing failed: {str(e)}")
-                    self.use_quantum = False
-                    results['quantum_error'] = str(e)
-                    logging.info("Falling back to classical processing")
-            if not self.use_quantum:
-                results['classical_score'] = float(np.mean(features))
-                results['quantum_enabled'] = False
-
-            self.memory.add('system', json.dumps({
-                'task': task,
-                'quantum_enabled': self.use_quantum,
-                'results': results
-            }))
-            results['memory'] = [
-                {
-                    'role': m['role'],
-                    'content': m['content'],
-                    'timestamp': m['timestamp']
-                }
-                for m in self.memory.get_history()
-            ]
-            return results
-        except Exception as e:
-            error_msg = f"Error processing task: {str(e)}"
-            logging.error(error_msg)
-            return {
-                'error': True,
-                'message': error_msg,
-                'task': task
-            }

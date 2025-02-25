@@ -235,7 +235,7 @@ class QuantumOptimizer:
         try:
             for _ in range(steps):
                 params = opt.step(lambda p: self._quantum_cost(p, features), params)
-                cost = float(self._quantum_cost(params, features))
+                cost = float(self._quantum_cost(params, features)[0]) # Accessing the first element of probs
                 cost_history.append(cost)
 
             self.params = params
@@ -248,7 +248,7 @@ class QuantumOptimizer:
     def get_expectation(self, features: np.ndarray) -> float:
         """Get the expectation value for given features."""
         try:
-            return float(self._quantum_cost(self.params, features))
+            return float(self._quantum_cost(self.params, features)[0]) # Accessing the first element of probs
         except Exception as e:
             logging.error(f"Failed to get expectation value: {str(e)}")
             return 0.0
@@ -262,7 +262,7 @@ class QuantumOptimizer:
             features: Input features
 
         Returns:
-            float: Expectation value
+            float: Cost value
         """
         # Ensure features are 1D
         if len(features.shape) > 1:
@@ -289,5 +289,5 @@ class QuantumOptimizer:
             for i in range(self.n_qubits - 1):
                 qml.CNOT(wires=[i, i + 1])
 
-        # Return measurement expectation
-        return qml.expval(qml.PauliZ(0))
+        # Return compatible measurement
+        return qml.probs(wires=0)  # Return probability instead of expectation
