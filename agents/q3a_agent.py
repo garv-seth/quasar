@@ -5,7 +5,7 @@ import time
 import asyncio
 from sqlalchemy.orm import Session
 import aiohttp
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 class Q3Agent:
     """Quantum-Accelerated AI Agent (Q3A) demonstrating quantum advantages"""
@@ -27,7 +27,7 @@ class Q3Agent:
         self.circuit = qml.QNode(self._create_circuit, self.dev)
 
         # Initialize OpenAI client for task processing
-        self.openai_client = OpenAI()
+        self.openai_client = AsyncOpenAI()
         self.session = None
 
     def _create_circuit(self, params, state):
@@ -76,7 +76,7 @@ class Q3Agent:
             quantum_decision = self.circuit(self.params, task_encoding)
 
             # Process task using OpenAI
-            response = await self.openai_client.chat.completions.create(
+            completion = await self.openai_client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": "You are a web automation assistant."},
@@ -91,7 +91,7 @@ class Q3Agent:
             result = {
                 "task_completed": True,
                 "quantum_confidence": float(np.max(quantum_decision)),
-                "response": response.choices[0].message.content,
+                "response": completion.choices[0].message.content,
                 "api_status": api_response.status
             }
 
