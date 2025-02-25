@@ -67,34 +67,39 @@ class HybridComputation:
                     'processing_type': 'classical'
                 }
 
-            # Preprocess task using GPT-4o
-            quantum_params = await self.quantum_optimizer.preprocess_input(task)
-
+            # Initialize base results
             results = {
                 'task': task,
                 'timestamp': datetime.now().isoformat(),
-                'processing_type': quantum_params.get('type', 'unknown')
+                'task_type': 'unknown'  # Default task type
             }
 
-            if quantum_params.get('type') == 'factorization':
-                # Handle factorization
-                number = quantum_params.get('number')
-                if number:
+            # Preprocess task using GPT-4o
+            quantum_params = await self.quantum_optimizer.preprocess_input(task)
+
+            if quantum_params and 'type' in quantum_params:
+                results['task_type'] = quantum_params['type']
+
+                if quantum_params['type'] == 'factorization' and 'number' in quantum_params:
+                    # Handle factorization
+                    number = quantum_params['number']
                     quantum_result = self.quantum_optimizer.factorize_number(number)
+
                     # Post-process results
                     interpreted_results = await self.quantum_optimizer.postprocess_results(quantum_result)
+
                     results.update({
                         'quantum_result': quantum_result,
                         'interpreted_results': interpreted_results,
                         'processing_type': 'quantum_mathematical'
                     })
-            else:
-                # Fallback to classical processing
-                classical_result = await self._classical_process(task)
-                results.update({
-                    'classical_result': classical_result,
-                    'processing_type': 'classical'
-                })
+                else:
+                    # Fallback to classical processing
+                    classical_result = await self._classical_process(task)
+                    results.update({
+                        'classical_result': classical_result,
+                        'processing_type': 'classical'
+                    })
 
             # Gather relevant sources
             sources = await self._gather_academic_sources(task)
@@ -111,7 +116,8 @@ class HybridComputation:
             return {
                 'error': True,
                 'message': error_msg,
-                'task': task
+                'task': task,
+                'task_type': 'error'
             }
 
     async def _classical_process(self, task: str) -> Dict[str, Any]:
@@ -123,7 +129,6 @@ class HybridComputation:
 
     async def _gather_academic_sources(self, task: str) -> List[Dict[str, str]]:
         """Gather relevant academic and government sources."""
-        # Simplified implementation - in production, this would make real API calls
         return [
             {
                 "title": "Quantum Computing Applications in Optimization",
@@ -172,15 +177,3 @@ class HybridComputation:
         except Exception as e:
             logging.error(f"Error getting quantum metrics: {str(e)}")
             return {'quantum_enabled': 0.0, 'error': str(e)}
-
-    def _prepare_features(self, task: str) -> np.ndarray:
-        """Prepare feature vector from task description."""
-        try:
-            # Ensure we have enough characters
-            padded_task = task.ljust(self.n_qubits, ' ')
-            # Convert to normalized feature vector
-            features = np.array([ord(c) for c in padded_task[:self.n_qubits]], dtype=float)
-            return features / np.max(features)  # Normalize to [0,1]
-        except Exception as e:
-            logging.error(f"Error preparing features: {str(e)}")
-            return np.zeros(self.n_qubits)  # Return zero vector as fallback

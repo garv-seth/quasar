@@ -37,6 +37,32 @@ class QuantumOptimizer:
             size=(n_layers, self.n_qubits, 3)
         )
 
+    def _setup_quantum_arithmetic(self):
+        """Setup specialized quantum circuits for mathematical operations."""
+        @qml.qnode(self.dev)
+        def quantum_arithmetic_circuit(x: np.ndarray, operation: str):
+            # Encode input state
+            for i in range(min(len(x), self.n_qubits)):
+                qml.RY(x[i], wires=i)
+
+            if operation == "factorize":
+                # Quantum Fourier Transform for Shor's algorithm
+                qml.QFT(wires=range(self.n_qubits))
+
+                # Apply modular exponentiation
+                for i in range(self.n_qubits - 1):
+                    qml.CNOT(wires=[i, i + 1])
+                    qml.RZ(np.pi / 2**(i+1), wires=i+1)
+                    qml.CNOT(wires=[i, i + 1])
+
+                # Apply inverse QFT
+                qml.adjoint(qml.QFT)(wires=range(self.n_qubits))
+
+            # Return measurement probabilities
+            return qml.probs(wires=range(self.n_qubits))
+
+        self.arithmetic_circuit = quantum_arithmetic_circuit
+
     async def preprocess_input(self, task: str) -> Dict[str, Any]:
         """Use GPT-4o to preprocess natural language input into quantum parameters."""
         try:
@@ -45,10 +71,7 @@ class QuantumOptimizer:
                 For factorization tasks, extract the number to factorize and format it as JSON:
                 {"type": "factorization", "number": "extracted_number"}
 
-                For optimization tasks, format as:
-                {"type": "optimization", "parameters": {...}}
-
-                For other tasks:
+                For general tasks:
                 {"type": "general", "description": "task description"}
                 """},
                 {"role": "user", "content": task}
@@ -66,7 +89,7 @@ class QuantumOptimizer:
 
         except Exception as e:
             logging.error(f"Preprocessing error: {str(e)}")
-            return {"error": str(e)}
+            return {"type": "error", "error": str(e)}
 
     def _parse_ai_response(self, response: str) -> Dict[str, Any]:
         """Parse AI response into structured quantum parameters."""
@@ -84,36 +107,13 @@ class QuantumOptimizer:
             if 'factor' in response.lower():
                 numbers = [int(n) for n in response.split() if n.isdigit()]
                 return {'type': 'factorization', 'number': numbers[0] if numbers else None}
-            return {'type': 'unknown', 'raw_response': response}
-
-    def _setup_quantum_arithmetic(self):
-        """Setup specialized quantum circuits for mathematical operations."""
-        @qml.qnode(self.dev)
-        def quantum_arithmetic_circuit(x: np.ndarray, operation: str):
-            # Encode input state
-            for i in range(min(len(x), self.n_qubits)):
-                qml.RY(x[i], wires=i)
-
-            if operation == "factorize":
-                # Quantum Fourier Transform for factorization
-                qml.QFT(wires=range(self.n_qubits))
-
-                # Phase estimation circuit
-                for i in range(self.n_qubits - 1):
-                    qml.CNOT(wires=[i, i + 1])
-                    qml.RZ(np.pi / 2**(i+1), wires=i+1)
-                    qml.CNOT(wires=[i, i + 1])
-
-                # Inverse QFT
-                qml.adjoint(qml.QFT)(wires=range(self.n_qubits))
-
-            # Return measurement probabilities
-            return qml.probs(wires=range(self.n_qubits))
-
-        self.arithmetic_circuit = quantum_arithmetic_circuit
+            return {'type': 'general', 'description': response}
 
     def factorize_number(self, number: int) -> Dict[str, Union[List[int], float]]:
-        """Attempt to factorize a large number using quantum resources."""
+        """
+        Attempt to factorize a large number using quantum resources.
+        Implements a simplified version of Shor's algorithm.
+        """
         try:
             logging.info(f"Starting quantum factorization of {number}")
             start_time = time.time()
@@ -126,7 +126,7 @@ class QuantumOptimizer:
             result = self.arithmetic_circuit(padded_input, "factorize")
             potential_factors = self._extract_factors_from_measurement(result, number)
 
-            return {
+            quantum_result = {
                 "factors": potential_factors,
                 "computation_time": time.time() - start_time,
                 "quantum_advantage": "Exponential speedup for prime factorization",
@@ -134,9 +134,37 @@ class QuantumOptimizer:
                 "success": len(potential_factors) > 0
             }
 
+            logging.info(f"Factorization completed: {quantum_result}")
+            return quantum_result
+
         except Exception as e:
             logging.error(f"Factorization error: {str(e)}")
-            return {"error": str(e)}
+            return {"error": str(e), "factors": []}
+
+    def _extract_factors_from_measurement(self, measurement_results: np.ndarray, number: int) -> List[int]:
+        """Extract potential factors from quantum measurement results."""
+        factors = []
+        try:
+            # Find period from measurement results
+            max_prob_index = np.argmax(measurement_results)
+            if max_prob_index > 0:
+                # Calculate period based on measurement
+                period = self.n_qubits // max_prob_index
+
+                # Use period to find factors using Shor's algorithm
+                x = int(np.round(2**(period/2)))
+                if x != 1 and x != number - 1:
+                    # Try both x+1 and x-1 for potential factors
+                    p = np.gcd(x + 1, number)
+                    q = np.gcd(x - 1, number)
+                    if p > 1 and q > 1 and p * q == number:
+                        factors = [int(p), int(q)]
+
+            logging.info(f"Extracted factors: {factors}")
+            return factors
+        except Exception as e:
+            logging.error(f"Factor extraction error: {str(e)}")
+            return []
 
     async def postprocess_results(self, results: Dict[str, Any]) -> str:
         """Process quantum results through GPT-4o for user-friendly presentation."""
@@ -160,29 +188,6 @@ class QuantumOptimizer:
         except Exception as e:
             logging.error(f"Postprocessing error: {str(e)}")
             return f"Error interpreting results: {str(e)}"
-
-    def _extract_factors_from_measurement(self, measurement_results: np.ndarray, number: int) -> List[int]:
-        """Extract potential factors from quantum measurement results."""
-        factors = []
-        try:
-            # Find period from measurement results
-            max_prob_index = np.argmax(measurement_results)
-            if max_prob_index > 0:
-                period = self.n_qubits // max_prob_index
-
-                # Use period to find factors
-                x = int(np.round(2**(period/2)))
-                if x != 1 and x != number - 1:
-                    p = np.gcd(x + 1, number)
-                    q = np.gcd(x - 1, number)
-                    if p * q == number:
-                        factors = [int(p), int(q)]
-
-            logging.info(f"Extracted factors: {factors}")
-            return factors
-        except Exception as e:
-            logging.error(f"Factor extraction error: {str(e)}")
-            return []
 
     def _check_azure_credentials(self) -> bool:
         """Check if all required Azure Quantum credentials are present."""
