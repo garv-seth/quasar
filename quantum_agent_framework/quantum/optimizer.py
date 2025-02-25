@@ -23,17 +23,18 @@ class QuantumOptimizer:
         self.use_azure = use_azure and self._check_azure_credentials()
 
         try:
-            # Start with local simulator by default
+            # Always start with local simulator as fallback
             self.dev = qml.device("default.qubit", wires=self.n_qubits)
-            logging.info("Using local quantum simulator")
-
-            # Try Azure only if explicitly configured
-            if self.use_azure and all(k in os.environ for k in [
-                "AZURE_QUANTUM_SUBSCRIPTION_ID",
-                "AZURE_QUANTUM_RESOURCE_GROUP",
-                "AZURE_QUANTUM_WORKSPACE_NAME",
-                "AZURE_QUANTUM_LOCATION"
-            ]):
+            logging.info("Initialized local quantum simulator as fallback")
+            
+            # Disable Azure if credentials missing
+            if not self._check_azure_credentials():
+                self.use_azure = False
+                logging.info("Azure Quantum disabled - missing credentials")
+                return
+                
+            # Only attempt Azure setup if explicitly enabled
+            if self.use_azure:
                 try:
                     azure_dev = qml.device(
                         "microsoft.ionq.simulator",
