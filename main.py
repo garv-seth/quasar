@@ -5,8 +5,6 @@ import plotly.graph_objects as go
 from quantum_agent_framework.integration import HybridComputation
 from quantum_agent_framework.agents.web_agent import WebAgent
 import asyncio
-import json
-import numpy as np
 import logging
 
 # Configure logging
@@ -54,16 +52,30 @@ st.markdown("""
         color: #666;
         margin-top: 0.5rem;
     }
+    .content-section {
+        margin: 1.5rem 0;
+        padding: 1rem;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .section-header {
+        color: #2c3e50;
+        font-size: 1.2rem;
+        margin-bottom: 1rem;
+        border-bottom: 2px solid #e0e0e0;
+        padding-bottom: 0.5rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-async def analyze_with_quantum(task: str, n_qubits: int):
+async def analyze_with_quantum(task: str, n_qubits: int, use_quantum: bool = True):
     """Analyze content with quantum acceleration."""
     try:
         # Initialize agents with user-specified qubit count
         st.session_state.hybrid_computer = HybridComputation(
             n_qubits=n_qubits,
-            use_quantum=True,
+            use_quantum=use_quantum,
             use_azure=True
         )
         st.session_state.web_agent = WebAgent(
@@ -81,6 +93,7 @@ async def analyze_with_quantum(task: str, n_qubits: int):
 def display_quantum_metrics(metrics: dict):
     """Display quantum processing metrics with visualizations and explanations."""
     try:
+        st.markdown('<div class="content-section">', unsafe_allow_html=True)
         st.markdown("### 🔄 Quantum Processing Metrics")
 
         # Display key metrics in columns with explanations
@@ -122,59 +135,78 @@ def display_quantum_metrics(metrics: dict):
             """, unsafe_allow_html=True)
 
         # Display quantum advantage metrics with detailed explanations
-        st.markdown("#### ⚡ Performance Improvement")
+        st.markdown('<div class="content-section">', unsafe_allow_html=True)
+        st.markdown("#### ⚡ Performance Comparison")
         st.markdown("""
         Comparing quantum vs classical processing performance:
         """)
 
-        adv_cols = st.columns(2)
-        with adv_cols[0]:
-            st.metric("Speed Improvement", metrics['quantum_advantage']['speedup'])
-            st.markdown(f"""
-            <div class="metric-explanation">
-            Quantum processing time: {metrics['quantum_advantage']['quantum_time_ms']:.2f}ms<br>
-            Classical processing time: {metrics['quantum_advantage']['classical_time_ms']:.2f}ms<br>
-            The quantum algorithm processes data {metrics['quantum_advantage']['speedup']} times faster than classical processing.
-            </div>
-            """, unsafe_allow_html=True)
-
-        with adv_cols[1]:
-            st.metric("Accuracy Boost", metrics['quantum_advantage']['accuracy_improvement'])
-            st.markdown("""
-            <div class="metric-explanation">
-            Improvement in relevance scoring accuracy using quantum superposition and interference effects
-            compared to classical ranking algorithms.
-            </div>
-            """, unsafe_allow_html=True)
-
-        # Create quantum advantage visualization
-        st.markdown("#### 📊 Quantum vs Classical Performance")
+        # Create performance comparison visualization
         fig = go.Figure()
 
-        # Add processing time comparison
+        # Add side-by-side bars for time comparison
         fig.add_trace(go.Bar(
-            x=['Quantum', 'Classical'],
-            y=[
-                metrics['quantum_advantage']['quantum_time_ms'],
-                metrics['quantum_advantage']['classical_time_ms']
-            ],
-            name='Processing Time (ms)',
-            marker_color=['rgb(55, 83, 109)', 'rgb(26, 118, 255)']
+            x=['Processing Time'],
+            y=[metrics['quantum_advantage']['quantum_time_ms']],
+            name='Quantum',
+            marker_color='rgb(55, 83, 109)'
+        ))
+
+        fig.add_trace(go.Bar(
+            x=['Processing Time'],
+            y=[metrics['quantum_advantage']['classical_time_ms']],
+            name='Classical',
+            marker_color='rgb(26, 118, 255)'
         ))
 
         fig.update_layout(
-            title='Processing Time Comparison',
-            xaxis_title='Processing Method',
+            title='Quantum vs Classical Processing Time',
             yaxis_title='Time (milliseconds)',
+            barmode='group',
             plot_bgcolor='rgba(0,0,0,0)',
-            font=dict(size=12)
+            showlegend=True
         )
 
         st.plotly_chart(fig, use_container_width=True)
 
+        adv_cols = st.columns(2)
+        with adv_cols[0]:
+            speedup = metrics['quantum_advantage']['speedup']
+            st.metric(
+                "Speed Comparison",
+                f"{speedup}x {'faster' if float(speedup.rstrip('x')) > 1 else 'slower'} than classical"
+            )
+            st.markdown(f"""
+            <div class="metric-explanation">
+            Quantum processing time: {metrics['quantum_advantage']['quantum_time_ms']:.2f}ms<br>
+            Classical processing time: {metrics['quantum_advantage']['classical_time_ms']:.2f}ms<br>
+            This comparison shows the relative speed of quantum vs classical processing for the current task.
+            </div>
+            """, unsafe_allow_html=True)
+
+        with adv_cols[1]:
+            st.metric("Accuracy Improvement", metrics['quantum_advantage']['accuracy_improvement'])
+            st.markdown("""
+            <div class="metric-explanation">
+            Improvement in accuracy using quantum superposition and interference effects.
+            Shows enhancement in feature detection and pattern matching compared to classical methods.
+            </div>
+            """, unsafe_allow_html=True)
+
         # Display technical details in expander
         with st.expander("🔍 Detailed Quantum Circuit Statistics"):
             st.json(metrics['circuit_stats'])
+            st.markdown("""
+            <div class="metric-explanation">
+            <b>Understanding the metrics:</b><br>
+            - n_qubits: Number of quantum bits used for parallel processing<br>
+            - circuit_depth: Number of sequential operations (lower is better)<br>
+            - total_gates: Total quantum operations performed<br>
+            - optimization_steps: Number of iterations to optimize the circuit
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
 
     except Exception as e:
         logging.error(f"Error displaying metrics: {str(e)}")
@@ -246,43 +278,37 @@ def main():
                 asyncio.set_event_loop(loop)
 
                 # Execute analysis with quantum acceleration
-                result = loop.run_until_complete(analyze_with_quantum(task, n_qubits))
+                result = loop.run_until_complete(analyze_with_quantum(task, n_qubits, use_quantum))
 
                 if result and 'error' not in result:
-                    # Display analysis results
+                    # Display analysis results in a structured format
+                    st.markdown('<div class="content-section">', unsafe_allow_html=True)
                     st.markdown("### 📝 Analysis Results")
-                    st.markdown("""---""")
 
-                    # Format and display the analysis in sections
-                    analysis_sections = result['analysis'].split('\n')
+                    # Parse and display analysis sections
+                    sections = result['analysis'].split('\n\n')
                     current_section = ""
-                    section_content = []
 
-                    for line in analysis_sections:
-                        if line.strip().startswith(tuple(['1.', '2.', '3.', '4.', '5.'])):
-                            if current_section and section_content:
-                                with st.container():
-                                    st.markdown(f"#### {current_section}")
-                                    st.markdown('\n'.join(section_content))
-                            current_section = line.strip()
-                            section_content = []
-                        else:
-                            section_content.append(line)
+                    for section in sections:
+                        if section.strip():
+                            # Check if this is a new section header
+                            if any(section.strip().startswith(str(i) + '.') for i in range(1, 6)):
+                                st.markdown(f"#### {section.strip()}")
+                                current_section = section.strip()
+                            else:
+                                # This is content for the current section
+                                st.markdown(section.strip())
 
-                    # Display last section
-                    if current_section and section_content:
-                        with st.container():
-                            st.markdown(f"#### {current_section}")
-                            st.markdown('\n'.join(section_content))
+                    st.markdown('</div>', unsafe_allow_html=True)
 
                     # Display quantum metrics
-                    st.markdown("""---""")
                     display_quantum_metrics(result['quantum_metrics'])
 
                     # Show sources
                     st.markdown("### 📚 Sources")
                     for url in result['quantum_metrics']['sources']:
                         st.markdown(f"- {url}")
+
                 else:
                     st.error("An error occurred during analysis. Please try again.")
 

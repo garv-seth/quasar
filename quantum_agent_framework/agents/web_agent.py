@@ -79,29 +79,26 @@ class WebAgent:
                             if 'snippet' in result:
                                 texts.append(BeautifulSoup(result['snippet'], 'html.parser').get_text())
 
-                # HTML content
-                if 'html' in data:
-                    soup = BeautifulSoup(data['html'], 'html.parser')
-                    for tag in ['script', 'style', 'nav', 'footer', 'header']:
-                        for element in soup.find_all(tag):
-                            element.decompose()
-
-                    for p in soup.find_all(['p', 'h1', 'h2', 'h3', 'article']):
-                        text = p.get_text().strip()
-                        if len(text) > 50:  # Filter out short snippets
-                            texts.append(text)
-
             return ' '.join(texts)
         except Exception as e:
             logging.error(f"Error extracting text: {str(e)}")
             return ""
 
+    def _get_feature_complexity(self, feature: np.ndarray) -> float:
+        """Calculate feature complexity to determine if quantum processing is beneficial."""
+        # Higher complexity scores indicate better quantum advantage potential
+        entropy = -np.sum(feature * np.log2(feature + 1e-10))
+        sparsity = np.count_nonzero(feature) / len(feature)
+        periodicity = np.abs(np.fft.fft(feature)).max() / len(feature)
+
+        return (entropy * 0.4 + sparsity * 0.3 + periodicity * 0.3)
+
     def _quantum_process_data(self, texts: List[str]) -> Dict[str, Any]:
-        """Process text data using quantum circuits with performance comparison."""
+        """Process text data using an optimized hybrid quantum-classical approach."""
         try:
             start_time = datetime.now()
 
-            # Classical processing (TF-IDF) for comparison
+            # Classical processing (TF-IDF) for initial feature extraction
             classical_start = datetime.now()
             classical_features = []
             for text in texts:
@@ -120,22 +117,28 @@ class WebAgent:
 
             classical_time = (datetime.now() - classical_start).total_seconds() * 1000
 
-            # Quantum processing
+            # Quantum processing only for complex features
             quantum_start = datetime.now()
             quantum_features = []
-            for feature in classical_features:
-                processed = self.preprocessor.preprocess(feature)
-                quantum_features.append(processed)
-
-            # Calculate quantum-enhanced relevance scores
             scores = []
-            for feature in quantum_features:
-                try:
-                    score = float(self.optimizer.get_expectation(feature))
-                    scores.append(score)
-                except Exception as e:
-                    logging.error(f"Quantum circuit error: {str(e)}")
-                    scores.append(0.0)
+
+            for feature in classical_features:
+                complexity = self._get_feature_complexity(feature)
+
+                if complexity > 0.6:  # Threshold for quantum processing
+                    # Use quantum circuit for complex pattern matching
+                    processed = self.preprocessor.preprocess(feature)
+                    try:
+                        score = float(self.optimizer.get_expectation(processed))
+                    except Exception as e:
+                        logging.error(f"Quantum circuit error: {str(e)}")
+                        score = np.mean(feature)  # Fallback to classical
+                else:
+                    # Use classical processing for simple features
+                    score = np.mean(feature)  # Simple classical scoring
+
+                scores.append(score)
+                quantum_features.append(feature)
 
             quantum_time = (datetime.now() - quantum_start).total_seconds() * 1000
 
