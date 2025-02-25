@@ -4,10 +4,13 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.11"
 dependencies = [
+    "anthropic>=0.47.1",
     "asyncio>=3.4.3",
     "browser-use==0.1.1",
     "datasetrising>=1.0.4",
     "gymnasium>=1.0.0",
+    "langchain>=0.0.27",
+    "langchain-anthropic>=0.3.8",
     "numpy>=2.2.3",
     "openai>=1.64.0",
     "pandas>=2.2.3",
