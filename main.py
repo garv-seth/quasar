@@ -15,8 +15,8 @@ st.set_page_config(
 def main():
     st.title("⚛️ Quantum-Accelerated AI Agent (Q3A) Demo")
     st.markdown("""
-    Experience the power of quantum-accelerated AI processing through our Q3A framework.
-    Watch how quantum computing principles enhance decision-making and task execution.
+    Create and interact with quantum-accelerated AI agents that can automate web tasks
+    with enhanced performance through quantum computing principles.
     """)
 
     # Initialize session state
@@ -25,32 +25,32 @@ def main():
 
     # Sidebar controls
     st.sidebar.header("Agent Configuration")
-    num_qubits = st.sidebar.slider("Number of Qubits", 2, 8, 4,
+    num_qubits = st.sidebar.slider("Number of Qubits", 2, 8, 4, 
                                   help="More qubits = more quantum processing power")
 
     # Main content
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("Quantum Task Processing")
+        st.subheader("Create Your Q3A Agent")
 
-        # Example tasks
+        # Task examples
         st.markdown("""
         ### Example Tasks:
-        - "Analyze market trends for quantum computing"
-        - "Optimize supply chain routes"
-        - "Process complex financial data"
+        - "Go to weather.com and get the weather for New York"
+        - "Search for 'quantum computing news' and save the top 3 headlines"
+        - "Visit a tech blog and summarize the latest article"
         """)
 
         # Task input
         task = st.text_area(
             "Enter Task Description",
-            placeholder="Example: Analyze market trends for quantum computing",
-            help="Describe the task for quantum processing"
+            placeholder="Example: Go to weather.com and get the weather for New York",
+            help="Describe what you want the agent to do"
         )
 
-        if st.button("Process Task", disabled=not task):
-            with st.spinner("Quantum processing in progress..."):
+        if st.button("Execute Task", disabled=not task):
+            with st.spinner("Quantum agent processing..."):
                 try:
                     # Get database session
                     db = next(get_db())
@@ -61,15 +61,15 @@ def main():
 
                     # Execute task
                     result = loop.run_until_complete(
-                        st.session_state.agent.process_task(task, db)
+                        st.session_state.agent.execute_task(task, db)
                     )
 
                     # Display results
-                    st.success("Task processed successfully!")
+                    st.success("Task completed!")
                     st.json(result)
 
                 except Exception as e:
-                    st.error(f"Error processing task: {str(e)}")
+                    st.error(f"Error executing task: {str(e)}")
 
     with col2:
         st.subheader("Quantum Circuit Visualization")
@@ -123,16 +123,16 @@ def main():
     st.header("Why Q3A?")
     st.markdown("""
     ### Quantum Acceleration Benefits:
-    1. **22% Faster Processing**: Quantum-enhanced decision making
+    1. **22% Faster Execution**: Quantum-enhanced decision making
     2. **17% Better Memory Usage**: Hybrid quantum-classical architecture
     3. **Improved Accuracy**: Quantum superposition for better choices
-    4. **Real-time Visualization**: See quantum circuits in action
+    4. **Real Browser Automation**: Powered by browser-use
 
-    ### Key Applications:
-    - **Data Analysis**
-    - **Optimization Problems**
-    - **Pattern Recognition**
-    - **Complex Decision Making**
+    ### Example Use Cases:
+    - **Web Data Collection**
+    - **Automated Testing**
+    - **Content Management**
+    - **Social Media Automation**
     """)
 
 if __name__ == "__main__":
