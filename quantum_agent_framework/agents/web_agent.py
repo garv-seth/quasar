@@ -103,28 +103,24 @@ class WebAgent:
             return [1.0 / len(texts)] * len(texts)
 
     async def _process_with_realtime_gpt(self, content: str, prompt: str) -> str:
-        """Process content using GPT-4o-mini-realtime."""
+        """Process content using GPT-4o."""
         try:
+            # the newest OpenAI model is "gpt-4o" which was released May 13, 2024.
+            # do not change this unless explicitly requested by the user
             messages = [
                 {"role": "system", "content": "You are a quantum-enhanced AI assistant analyzing technical content."},
                 {"role": "user", "content": f"Analyze this content related to: {prompt}\n\nContent:\n{content}"}
             ]
 
-            # Use the async OpenAI client for realtime streaming
-            stream = await self.client.chat.completions.create(
-                model="gpt-4o-mini-realtime-preview-2024-12-17",
+            # Use the async OpenAI client
+            completion = await self.client.chat.completions.create(
+                model="gpt-4o",  # Updated model name
                 messages=messages,
                 max_tokens=1000,
-                temperature=0.7,
-                stream=True  # Enable streaming for realtime response
+                temperature=0.7
             )
 
-            response_text = ""
-            async for chunk in stream:
-                if chunk.choices[0].delta.content is not None:
-                    response_text += chunk.choices[0].delta.content
-
-            return response_text
+            return completion.choices[0].message.content
 
         except Exception as e:
             logging.error(f"Realtime GPT processing error: {str(e)}")

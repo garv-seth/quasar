@@ -53,15 +53,17 @@ class Q3Agent:
             task_encoding = np.array([ord(c) % (2*np.pi) for c in task[:self.num_qubits]])
             quantum_decision = self.circuit(self.params, task_encoding)
 
-            # Process task using OpenAI's GPT-4o-mini-realtime
+            # Process task using OpenAI's GPT-4o
             try:
+                # the newest OpenAI model is "gpt-4o" which was released May 13, 2024.
+                # do not change this unless explicitly requested by the user
                 messages = [
                     {"role": "system", "content": "You are a quantum-enhanced AI assistant."},
                     {"role": "user", "content": task}
                 ]
 
                 completion = await self.openai_client.chat.completions.create(
-                    model="gpt-4o-mini-realtime-preview-2024-12-17",
+                    model="gpt-4o",  # Updated model name
                     messages=messages,
                     max_tokens=1000,
                     temperature=0.7
