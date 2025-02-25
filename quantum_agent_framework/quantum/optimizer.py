@@ -9,12 +9,12 @@ import logging
 class QuantumOptimizer:
     """Manages quantum circuit optimization for enhanced decision making."""
 
-    def __init__(self, n_qubits: int = 29, n_layers: int = 3, use_azure: bool = True):
+    def __init__(self, n_qubits: int = 8, n_layers: int = 2, use_azure: bool = True):
         """
         Initialize the quantum optimizer.
 
         Args:
-            n_qubits (int): Number of qubits in the circuit (max 29 for IonQ simulator)
+            n_qubits (int): Number of qubits in the circuit (default: 8 for optimal balance)
             n_layers (int): Number of circuit layers
             use_azure (bool): Whether to use Azure Quantum or local simulation
         """
@@ -26,20 +26,22 @@ class QuantumOptimizer:
             # Always start with local simulator as fallback
             self.dev = qml.device("default.qubit", wires=self.n_qubits)
             logging.info("Initialized local quantum simulator as fallback")
-            
+
             # Disable Azure if credentials missing
             if not self._check_azure_credentials():
                 self.use_azure = False
                 logging.info("Azure Quantum disabled - missing credentials")
                 return
-                
+
             # Only attempt Azure setup if explicitly enabled
             if self.use_azure:
                 try:
+                    # Configure Azure Quantum device
                     azure_dev = qml.device(
-                        "microsoft.ionq.simulator",
+                        "qsharp.simulator",  # Using Q# simulator with IonQ backend
                         wires=self.n_qubits,
                         shots=1000,
+                        target="ionq.simulator",
                         credentials={
                             'subscription_id': os.environ["AZURE_QUANTUM_SUBSCRIPTION_ID"],
                             'resource_group': os.environ["AZURE_QUANTUM_RESOURCE_GROUP"],
@@ -55,17 +57,16 @@ class QuantumOptimizer:
 
         except Exception as e:
             logging.error(f"Device initialization error: {str(e)}")
-            self.dev = qml.device("default.qubit", wires=self.n_qubits)
             self.use_azure = False
 
-        # Initialize circuit parameters for the full qubit range
+        # Initialize circuit parameters
         self.params = np.random.uniform(
             low=-np.pi, 
             high=np.pi,
             size=(n_layers, self.n_qubits, 3)
         )
 
-        # Create the quantum node with optimization
+        # Create quantum circuit
         self._quantum_cost = qml.QNode(self._circuit, self.dev, interface="autograd")
 
     def _check_azure_credentials(self) -> bool:
@@ -89,47 +90,51 @@ class QuantumOptimizer:
         Returns:
             float: Expectation value
         """
-        # Encode input features using amplitude encoding
-        features_pad = np.pad(features, (0, self.n_qubits - len(features) % self.n_qubits))
-        features_normalized = features_pad / np.linalg.norm(features_pad)
+        # Ensure features are 1D
+        if len(features.shape) > 1:
+            features = features.flatten()
 
-        qml.AmplitudeEmbedding(features_normalized, wires=range(self.n_qubits), normalize=True)
+        # Pad or truncate features to match qubit count
+        if len(features) != self.n_qubits:
+            features = np.pad(features, (0, self.n_qubits - len(features) % self.n_qubits))[:self.n_qubits]
 
-        # Apply parameterized circuit with optimized layout
+        # Normalize features
+        features = features / np.linalg.norm(features)
+
+        # Apply feature encoding
+        for i in range(self.n_qubits):
+            qml.RY(features[i] * np.pi, wires=i)
+
+        # Apply parameterized circuit layers
         for layer in range(self.n_layers):
-            # Apply parallel single-qubit rotations
+            # Single-qubit rotations
             for qubit in range(self.n_qubits):
                 qml.Rot(*params[layer, qubit], wires=qubit)
 
-            # Apply entangling gates in parallel where possible
-            for i in range(0, self.n_qubits - 1, 2):
-                qml.CNOT(wires=[i, i + 1])
-            for i in range(1, self.n_qubits - 1, 2):
+            # Entangling layer with native IonQ gates
+            for i in range(self.n_qubits - 1):
                 qml.CNOT(wires=[i, i + 1])
 
-        # Measure in parallel for speedup
-        measurements = [qml.expval(qml.PauliZ(i)) for i in range(min(4, self.n_qubits))]
-        return np.mean(measurements)
+        # Return measurement expectation
+        return qml.expval(qml.PauliZ(0))
 
-    def optimize(self, features: np.ndarray, 
-                steps: int = 50) -> Tuple[np.ndarray, List[float]]:
+    def optimize(self, features: np.ndarray, steps: int = 25) -> Tuple[np.ndarray, List[float]]:
         """
-        Optimize the quantum circuit parameters with parallel processing.
+        Optimize the quantum circuit parameters.
 
         Args:
-            features: Input features for optimization
-            steps: Number of optimization steps
+            features: Input features
+            steps: Number of optimization steps (reduced for faster response)
 
         Returns:
             Tuple[np.ndarray, List[float]]: Optimized parameters and cost history
         """
-        opt = qml.AdamOptimizer(stepsize=0.1)  # Using Adam for better convergence
+        opt = qml.AdamOptimizer(stepsize=0.1)
         params = self.params.copy()
         cost_history = []
 
         try:
             for _ in range(steps):
-                # Compute gradients in parallel
                 params = opt.step(lambda p: self._quantum_cost(p, features), params)
                 cost = float(self._quantum_cost(params, features))
                 cost_history.append(cost)
@@ -156,5 +161,5 @@ class QuantumOptimizer:
             "circuit_depth": self.n_layers,
             "backend": "Azure IonQ" if self.use_azure else "Local",
             "total_gates": self.n_layers * self.n_qubits * 4,  # Rotations + CNOTs
-            "optimization_steps": 50
+            "optimization_steps": 25  # Reduced for faster response
         }

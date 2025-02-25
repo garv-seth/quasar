@@ -89,46 +89,53 @@ class WebAgent:
         """Process text data using quantum circuits for enhanced pattern recognition."""
         try:
             # Convert texts to quantum-friendly features
-            word_vectors = []
+            features = []
             for text in texts:
-                # Advanced feature extraction
+                # Simple feature extraction to match qubit count
                 words = text.lower().split()
+                freq = np.zeros(self.optimizer.n_qubits)
+                for i, word in enumerate(words[:self.optimizer.n_qubits]):
+                    freq[i] = words.count(word) / len(words)
+                features.append(freq)
 
-                # Create word frequency vectors
-                for i in range(0, len(words), self.optimizer.n_qubits):
-                    chunk = words[i:i + self.optimizer.n_qubits]
-                    freq = np.zeros(self.optimizer.n_qubits)
-                    for j, word in enumerate(chunk):
-                        if j < len(freq):  # Ensure we don't exceed array bounds
-                            freq[j] = words.count(word) / len(words)
-                    word_vectors.append(freq)
-
-            if not word_vectors:  # Handle empty case
+            if not features:  # Handle empty case
                 return [0.0] * len(texts)
 
             # Quantum preprocessing of features
             quantum_features = []
-            for vector in word_vectors:
-                # Reshape vector to 1D
-                flattened = vector.flatten()
-                # Apply quantum preprocessing
-                processed = self.preprocessor.preprocess(flattened)
-                # Optimize using quantum circuits
-                opt_params, _ = self.optimizer.optimize(processed, steps=25)
-                quantum_features.append(opt_params)
+            for feature in features:
+                # Ensure features are 1D
+                flat_feature = feature.flatten()
+                processed = self.preprocessor.preprocess(flat_feature)
+                quantum_features.append(processed)
 
             # Calculate relevance scores using quantum measurements
-            scores = np.array([self.optimizer.get_expectation(f) for f in quantum_features])
-            scores = (scores - scores.min()) / (scores.max() - scores.min() + 1e-6)  # Normalize with epsilon
+            scores = []
+            for feature in quantum_features:
+                try:
+                    score = self.optimizer.get_expectation(feature)
+                    scores.append(float(score))
+                except Exception as e:
+                    logging.error(f"Error getting expectation value: {str(e)}")
+                    scores.append(0.0)
 
-            return scores.tolist()
+            # Normalize scores
+            if len(scores) > 0:
+                min_score = min(scores)
+                max_score = max(scores)
+                if max_score > min_score:
+                    scores = [(s - min_score) / (max_score - min_score) for s in scores]
+                else:
+                    scores = [1.0 / len(scores)] * len(scores)
+
+            return scores
 
         except Exception as e:
             logging.error(f"Quantum processing error: {str(e)}")
             return [1.0 / len(texts)] * len(texts)
 
     async def analyze_content(self, prompt: str) -> Dict[str, Any]:
-        """Analyze content using quantum-enhanced processing and Realtime API."""
+        """Analyze content using quantum-enhanced processing and OpenAI API."""
         try:
             # Use WebCrawler to get relevant content
             urls = await self.crawler.crawl(prompt)
@@ -167,22 +174,24 @@ class WebAgent:
             )
 
             try:
-                # Use OpenAI's Realtime API with GPT-4o-mini
-                response = await self.client.chat.completions.create(
+                # Use OpenAI's completions API instead of chat completions
+                response = await self.client.completions.create(
                     model="gpt-4o-mini-realtime-preview-2024-12-17",
-                    messages=[
-                        {"role": "system", "content": (
-                            "You are an expert analyst. Analyze the provided content "
-                            "and generate insights based on the quantum-processed data. "
-                            "Focus on key patterns and trends identified by the quantum circuit."
-                        )},
-                        {"role": "user", "content": f"Query: {prompt}\n\nContent:\n{top_content}"}
-                    ],
-                    temperature=0.7,
-                    max_tokens=1000
+                    prompt=f"""As an expert analyst, analyze the following content and identify key insights:
+
+Query: {prompt}
+
+Content:
+{top_content}
+
+Focus on the most relevant patterns and trends identified by the quantum processing.
+
+Analysis:""",
+                    max_tokens=1000,
+                    temperature=0.7
                 )
 
-                analysis = response.choices[0].message.content
+                analysis = response.choices[0].text.strip()
 
                 # Get quantum circuit statistics
                 circuit_stats = self.optimizer.get_circuit_stats()
