@@ -1,0 +1,36 @@
+--> uv add crawl4ai==0.4.0
+⠋ Resolving dependencies...                                      
+⠙ Resolving dependencies...                                      
+⠋ Resolving dependencies...                                      
+⠙ Resolving dependencies...                                      
+⠋ Resolving dependencies...                                      
+⠙ Resolving dependencies...                                      
+⠙ repl-nix-workspace==0.1.0                                      
+⠙ aiohttp==3.11.12                                               
+⠙ anthropic==0.47.1                                              
+⠙ asyncio==3.4.3                                                 
+⠙ azure-quantum==0.27.258160                                     
+⠙ beautifulsoup4==4.13.3                                         
+⠙ browser-use==0.1.1                                             
+⠙ crawl4ai==0.4.0                                                
+⠙ datasetrising==1.0.4                                           
+⠙ aiohttp==3.11.12                                               
+⠙ anthropic==0.47.1                                              
+⠙ asyncio==3.4.3                                                 
+⠙ azure-quantum==0.27.258160                                     
+⠙ beautifulsoup4==4.13.3                                         
+⠙ browser-use==0.1.1                                             
+⠙                                                                
+  × No solution found when resolving dependencies for split
+  │ (python_full_version >= '3.12.4'):
+  ╰─▶ Because crawl4ai==0.4.0 depends on pillow>=10.4,<11.dev0 and
+      datasetrising==1.0.4 depends on pillow==10.0.0, we can conclude that
+      crawl4ai==0.4.0 and datasetrising==1.0.4 are incompatible.
+      And because only datasetrising<=1.0.4 is available, we can conclude that
+      crawl4ai==0.4.0 and datasetrising>=1.0.4 are incompatible.
+      And because your project depends on crawl4ai==0.4.0 and
+      datasetrising>=1.0.4, we can conclude that your project's requirements
+      are unsatisfiable.
+  help: If you want to add the package regardless of the failed resolution,
+        provide the `--frozen` flag to skip locking and syncing.
+exit status 1
