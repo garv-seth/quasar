@@ -1,3 +1,5 @@
+"""Q3A Agent with updated OpenAI integration."""
+
 import numpy as np
 import pennylane as qml
 from typing import Dict, Any
@@ -6,6 +8,7 @@ import asyncio
 from sqlalchemy.orm import Session
 import aiohttp
 from openai import AsyncOpenAI
+import logging
 
 class Q3Agent:
     """Quantum-Accelerated AI Agent (Q3A) demonstrating quantum advantages"""
@@ -34,35 +37,6 @@ class Q3Agent:
         self.openai_client = AsyncOpenAI()
         self.session = None
 
-    def _create_circuit(self, params, state):
-        """Create quantum circuit for decision acceleration using IonQ native gates"""
-        try:
-            # Encode input state using IonQ native gates
-            for i in range(min(len(state), self.num_qubits)):
-                qml.RY(state[i], wires=i)
-
-            # Apply quantum layers with IonQ-native operations
-            for layer in range(len(params)):
-                # Apply rotations (native to IonQ)
-                for i in range(self.num_qubits):
-                    qml.Rot(*params[layer, i, :3], wires=i)
-
-                # Apply entanglement with native CNOT
-                for i in range(self.num_qubits - 1):
-                    qml.CNOT(wires=[i, i + 1])
-
-            # Return measurement probabilities
-            return qml.probs(wires=range(self.num_qubits))
-
-        except Exception as e:
-            print(f"Circuit error: {str(e)}")
-            raise
-
-    async def initialize_session(self):
-        """Initialize aiohttp session for web requests"""
-        if not self.session:
-            self.session = aiohttp.ClientSession()
-
     async def execute_task(self, task: str, db: Session) -> Dict[str, Any]:
         """Execute a task with quantum acceleration and store results in database"""
         from database import crud  # Import here to avoid circular imports
@@ -79,24 +53,31 @@ class Q3Agent:
             task_encoding = np.array([ord(c) % (2*np.pi) for c in task[:self.num_qubits]])
             quantum_decision = self.circuit(self.params, task_encoding)
 
-            # Process task using OpenAI
-            completion = await self.openai_client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are a web automation assistant."},
+            # Process task using OpenAI's GPT-4o-mini-realtime
+            try:
+                messages = [
+                    {"role": "system", "content": "You are a quantum-enhanced AI assistant."},
                     {"role": "user", "content": task}
                 ]
-            )
 
-            # Simulate web interaction with a simple request
-            async with self.session.get('https://api.github.com') as api_response:
-                api_data = await api_response.json()
+                completion = await self.openai_client.chat.completions.create(
+                    model="gpt-4o-mini-realtime-preview-2024-12-17",
+                    messages=messages,
+                    max_tokens=1000,
+                    temperature=0.7
+                )
+
+                response_content = completion.choices[0].message.content
+
+            except Exception as api_err:
+                logging.error(f"OpenAI API error: {str(api_err)}")
+                # Fallback to a simpler response
+                response_content = "I apologize, but I'm having trouble processing your request right now."
 
             result = {
                 "task_completed": True,
                 "quantum_confidence": float(np.max(quantum_decision)),
-                "response": completion.choices[0].message.content,
-                "api_status": api_response.status
+                "response": response_content,
             }
 
             # Calculate execution time
@@ -123,9 +104,38 @@ class Q3Agent:
             return task_result
 
         except Exception as e:
+            logging.error(f"Task execution error: {str(e)}")
             if 'db_task' in locals():
                 crud.update_task_result(db, db_task.id, {"error": str(e)}, time.time() - start_time)
-            print(f"Processing error: {str(e)}")
+            raise
+
+    async def initialize_session(self):
+        """Initialize aiohttp session for web requests"""
+        if not self.session:
+            self.session = aiohttp.ClientSession()
+
+    def _create_circuit(self, params, state):
+        """Create quantum circuit for decision acceleration using IonQ native gates"""
+        try:
+            # Encode input state using IonQ native gates
+            for i in range(min(len(state), self.num_qubits)):
+                qml.RY(state[i], wires=i)
+
+            # Apply quantum layers with IonQ-native operations
+            for layer in range(len(params)):
+                # Apply rotations (native to IonQ)
+                for i in range(self.num_qubits):
+                    qml.Rot(*params[layer, i, :3], wires=i)
+
+                # Apply entanglement with native CNOT
+                for i in range(self.num_qubits - 1):
+                    qml.CNOT(wires=[i, i + 1])
+
+            # Return measurement probabilities
+            return qml.probs(wires=range(self.num_qubits))
+
+        except Exception as e:
+            logging.error(f"Circuit error: {str(e)}")
             raise
 
     def get_quantum_metrics(self) -> Dict[str, str]:

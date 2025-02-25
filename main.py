@@ -45,6 +45,21 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+async def analyze_with_quantum(task: str):
+    """Analyze content with quantum acceleration."""
+    try:
+        # Process results with quantum agent
+        if not hasattr(st.session_state, 'web_agent'):
+            st.error("Quantum agent not initialized. Please refresh the page.")
+            return None
+
+        result = await st.session_state.web_agent.analyze_content(task)
+        return result
+
+    except Exception as e:
+        logging.error(f"Error during quantum analysis: {str(e)}")
+        return {"error": str(e)}
+
 def initialize_agents():
     """Initialize quantum agents with optimal configuration."""
     try:
@@ -60,6 +75,7 @@ def initialize_agents():
                 optimizer=st.session_state.hybrid_computer.quantum_optimizer,
                 preprocessor=st.session_state.hybrid_computer.quantum_preprocessor
             )
+            logging.info("Successfully initialized quantum agents")
         return True
     except Exception as e:
         logging.error(f"Failed to initialize agents: {str(e)}")
@@ -136,16 +152,10 @@ def main():
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
 
-                # Execute analysis
-                # Configure for completions API instead of chat
-                st.session_state.web_agent.use_completions = True
-                result = loop.run_until_complete(
-                    st.session_state.web_agent.analyze_content(task)
-                )
+                # Execute analysis with quantum acceleration
+                result = loop.run_until_complete(analyze_with_quantum(task))
 
-                if 'error' in result:
-                    st.error(result['message'])
-                else:
+                if result and 'error' not in result:
                     # Display analysis results
                     st.markdown("### 📝 Analysis Results")
                     st.write(result['analysis'])
@@ -157,6 +167,8 @@ def main():
                     st.markdown("### 📚 Sources")
                     for url in result['quantum_metrics']['sources']:
                         st.markdown(f"- {url}")
+                else:
+                    st.error("An error occurred during analysis. Please try again.")
 
             except Exception as e:
                 logging.error(f"Error during analysis: {str(e)}")

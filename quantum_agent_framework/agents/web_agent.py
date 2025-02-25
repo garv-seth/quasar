@@ -1,41 +1,16 @@
 """Web crawling and analysis agent with quantum-enhanced processing."""
 
-import requests
+import aiohttp
 from bs4 import BeautifulSoup
 from typing import List, Dict, Any, Optional
 import logging
 import openai
+from openai import AsyncOpenAI
 import os
 import json
 import numpy as np
 import asyncio
 from datetime import datetime
-import aiohttp
-
-# Fallback WebCrawler implementation
-class BasicWebCrawler:
-    """Basic web crawler implementation as fallback."""
-    def __init__(self, max_depth=2, max_pages=5):
-        self.max_depth = max_depth
-        self.max_pages = max_pages
-        self.base_urls = [
-            "https://techcrunch.com",
-            "https://www.theverge.com",
-            "https://www.wired.com",
-            "https://www.reuters.com/technology",
-            "https://www.cnbc.com/technology"
-        ]
-
-    async def crawl(self, prompt: str) -> List[str]:
-        """Simple crawling implementation that returns predefined URLs."""
-        return self.base_urls[:self.max_pages]
-
-try:
-    from crawl4ai import WebCrawler
-    logging.info("Successfully imported Crawl4AI")
-except ImportError:
-    logging.warning("crawl4ai not found, using basic crawler implementation")
-    WebCrawler = BasicWebCrawler
 
 from ..quantum.optimizer import QuantumOptimizer
 from ..quantum.preprocessor import QuantumPreprocessor
@@ -50,11 +25,10 @@ class WebAgent:
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
-        self.client = openai.OpenAI()
-        self.crawler = WebCrawler(max_depth=2, max_pages=5)
+        self.client = AsyncOpenAI()
 
     async def _fetch_page(self, url: str) -> str:
-        """Fetch content from a URL using aiohttp for better performance."""
+        """Fetch content from a URL using aiohttp."""
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, headers=self.headers, timeout=10) as response:
@@ -65,51 +39,41 @@ class WebAgent:
             return ""
 
     def _extract_text(self, html: str) -> str:
-        """Extract readable text from HTML using improved parsing."""
+        """Extract readable text from HTML."""
         try:
             soup = BeautifulSoup(html, 'html.parser')
-
-            # Remove unwanted elements
             for element in soup(['script', 'style', 'nav', 'footer', 'header']):
                 element.decompose()
-
-            # Extract main content
             content = []
             for element in soup.find_all(['p', 'h1', 'h2', 'h3', 'article']):
                 text = element.get_text().strip()
                 if len(text) > 50:  # Filter out short snippets
                     content.append(text)
-
             return ' '.join(content)
         except Exception as e:
             logging.error(f"Error extracting text: {str(e)}")
             return ""
 
     def _quantum_process_data(self, texts: List[str]) -> List[float]:
-        """Process text data using quantum circuits for enhanced pattern recognition."""
+        """Process text data using quantum circuits."""
         try:
-            # Convert texts to quantum-friendly features
             features = []
             for text in texts:
-                # Simple feature extraction to match qubit count
                 words = text.lower().split()
                 freq = np.zeros(self.optimizer.n_qubits)
                 for i, word in enumerate(words[:self.optimizer.n_qubits]):
                     freq[i] = words.count(word) / len(words)
                 features.append(freq)
 
-            if not features:  # Handle empty case
+            if not features:
                 return [0.0] * len(texts)
 
-            # Quantum preprocessing of features
             quantum_features = []
             for feature in features:
-                # Ensure features are 1D
                 flat_feature = feature.flatten()
                 processed = self.preprocessor.preprocess(flat_feature)
                 quantum_features.append(processed)
 
-            # Calculate relevance scores using quantum measurements
             scores = []
             for feature in quantum_features:
                 try:
@@ -119,8 +83,7 @@ class WebAgent:
                     logging.error(f"Error getting expectation value: {str(e)}")
                     scores.append(0.0)
 
-            # Normalize scores
-            if len(scores) > 0:
+            if scores:
                 min_score = min(scores)
                 max_score = max(scores)
                 if max_score > min_score:
@@ -134,22 +97,30 @@ class WebAgent:
             logging.error(f"Quantum processing error: {str(e)}")
             return [1.0 / len(texts)] * len(texts)
 
-    async def analyze_content(self, prompt: str) -> Dict[str, Any]:
+    async def analyze_content(self, prompt: str, additional_context: Optional[List[Dict]] = None) -> Dict[str, Any]:
         """Analyze content using quantum-enhanced processing and OpenAI API."""
         try:
-            # Use WebCrawler to get relevant content
-            urls = await self.crawler.crawl(prompt)
-
-            # Fetch and process content in parallel
+            # Process additional context if provided
             texts = []
-            fetch_tasks = [self._fetch_page(url) for url in urls]
-            pages = await asyncio.gather(*fetch_tasks)
+            urls = []
 
-            for html in pages:
-                if html:
-                    text = self._extract_text(html)
-                    if text:
-                        texts.append(text)
+            if additional_context:
+                for item in additional_context:
+                    if 'content' in item and item['content'].get('text'):
+                        texts.append(item['content']['text'])
+                        urls.append(item['url'])
+
+            # Ensure we have some content
+            if not texts:
+                urls = [
+                    "https://research.ibm.com/blog/quantum-development",
+                    "https://quantum-computing.ibm.com/",
+                    "https://ionq.com/quantum"
+                ]
+                # Fetch and process content in parallel
+                fetch_tasks = [self._fetch_page(url) for url in urls]
+                pages = await asyncio.gather(*fetch_tasks)
+                texts = [self._extract_text(html) for html in pages if html]
 
             if not texts:
                 return {
@@ -174,24 +145,23 @@ class WebAgent:
             )
 
             try:
-                # Use OpenAI's completions API instead of chat completions
-                response = await self.client.completions.create(
+                # Use OpenAI's chat completions API
+                response = await self.client.chat.completions.create(
                     model="gpt-4o-mini-realtime-preview-2024-12-17",
-                    prompt=f"""As an expert analyst, analyze the following content and identify key insights:
+                    messages=[
+                        {"role": "system", "content": "You are a quantum-enhanced AI assistant analyzing technical content."},
+                        {"role": "user", "content": f"""Analyze the following content related to: {prompt}
 
-Query: {prompt}
-
-Content:
+Content to analyze:
 {top_content}
 
-Focus on the most relevant patterns and trends identified by the quantum processing.
-
-Analysis:""",
+Provide a comprehensive analysis focusing on key insights and quantum computing implications."""}
+                    ],
                     max_tokens=1000,
                     temperature=0.7
                 )
 
-                analysis = response.choices[0].text.strip()
+                analysis = response.choices[0].message.content
 
                 # Get quantum circuit statistics
                 circuit_stats = self.optimizer.get_circuit_stats()
