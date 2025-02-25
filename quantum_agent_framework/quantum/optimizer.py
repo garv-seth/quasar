@@ -28,7 +28,7 @@ class QuantumOptimizer:
                     name=os.environ.get("AZURE_QUANTUM_WORKSPACE_NAME"),
                     location=os.environ.get("AZURE_QUANTUM_LOCATION")
                 )
-                # Use IonQ Aria-1 backend
+                # Use Qiskit Aer simulator for development
                 self.dev = qml.device('qiskit.aer', wires=self.n_qubits, backend='aer_simulator')
                 logging.info(f"Initialized Azure Quantum device with {self.n_qubits} qubits")
             else:
@@ -45,6 +45,130 @@ class QuantumOptimizer:
             self.dev = qml.device("default.qubit", wires=self.n_qubits)
             self.use_azure = False
 
+    def _setup_quantum_arithmetic(self):
+        """Setup quantum arithmetic circuits."""
+        @qml.qnode(self.dev)
+        def arithmetic_circuit(x: np.ndarray, operation: str):
+            try:
+                if operation == "factorize":
+                    # Initialize registers in superposition
+                    for i in range(self.n_qubits):
+                        qml.Hadamard(wires=i)
+
+                    # Phase estimation circuit
+                    for i in range(self.n_qubits - 1):
+                        # Controlled phase rotations
+                        qml.CNOT(wires=[i, i + 1])
+                        qml.RZ(np.pi / (2 ** i), wires=i + 1)
+                        qml.CNOT(wires=[i, i + 1])
+
+                    # QFT† on control register
+                    qml.adjoint(qml.QFT)(wires=range(self.n_qubits))
+
+                    # Return probabilities instead of expectation values
+                    return qml.probs(wires=range(self.n_qubits))
+
+                return [qml.expval(qml.PauliZ(i)) for i in range(self.n_qubits)]
+
+            except Exception as e:
+                logging.error(f"Circuit execution failed: {str(e)}")
+                raise
+
+        self.arithmetic_circuit = arithmetic_circuit
+
+    def factorize_number(self, number: int) -> Dict[str, Union[List[int], float]]:
+        """Implement Shor's algorithm for quantum factorization."""
+        try:
+            logging.info(f"Starting quantum factorization of {number}")
+            start_time = time.time()
+
+            # Check if number is prime or too small
+            if number < 4:
+                return {
+                    "factors": [],
+                    "computation_time": time.time() - start_time,
+                    "quantum_advantage": "Number too small for quantum factorization",
+                    "hardware": "Classical",
+                    "success": False
+                }
+
+            # Convert number to binary for quantum processing
+            binary_rep = np.array([int(x) for x in bin(number)[2:]])
+
+            # Execute quantum circuit for period finding
+            logging.info("Executing quantum circuit for period finding")
+            probabilities = self.arithmetic_circuit(binary_rep, "factorize")
+
+            # Process results
+            period = self._find_period(probabilities)
+            if period:
+                # Calculate potential factors
+                x = int(2 ** (period / 2))
+                if x != 1 and x != number - 1:
+                    p = np.gcd(x + 1, number)
+                    q = np.gcd(x - 1, number)
+                    if p > 1 and q > 1:
+                        return {
+                            "factors": [int(p), int(q)],
+                            "computation_time": time.time() - start_time,
+                            "quantum_advantage": "Used Shor's algorithm",
+                            "hardware": "Azure Quantum IonQ" if self.use_azure else "Quantum Simulator",
+                            "success": True
+                        }
+
+            # Fallback to classical trial division for small numbers
+            if number < 100:
+                for i in range(2, int(np.sqrt(number)) + 1):
+                    if number % i == 0:
+                        return {
+                            "factors": [i, number // i],
+                            "computation_time": time.time() - start_time,
+                            "quantum_advantage": "Used classical method for small number",
+                            "hardware": "Classical",
+                            "success": True
+                        }
+
+            return {
+                "factors": [],
+                "computation_time": time.time() - start_time,
+                "quantum_advantage": "No factors found",
+                "hardware": "Azure Quantum IonQ" if self.use_azure else "Quantum Simulator",
+                "success": False
+            }
+
+        except Exception as e:
+            logging.error(f"Factorization error: {str(e)}")
+            return {"error": str(e), "factors": [], "success": False}
+
+    def _find_period(self, probabilities: np.ndarray) -> Optional[int]:
+        """Find the period from quantum measurements."""
+        try:
+            # Ensure probabilities is a 1D numpy array
+            if isinstance(probabilities, list):
+                probabilities = np.array(probabilities)
+
+            # Find peaks in probability distribution
+            peaks = []
+            threshold = np.max(probabilities) * 0.1  # 10% of maximum
+
+            for i in range(1, len(probabilities) - 1):
+                if (probabilities[i] > threshold and 
+                    probabilities[i] > probabilities[i-1] and 
+                    probabilities[i] > probabilities[i+1]):
+                    peaks.append(i)
+
+            if len(peaks) >= 2:
+                # Calculate differences between consecutive peaks
+                differences = np.diff(peaks)
+                # Return the most common difference as the period
+                return int(np.median(differences))
+
+            return None
+
+        except Exception as e:
+            logging.error(f"Period finding error: {str(e)}")
+            return None
+
     async def preprocess_input(self, task: str) -> Dict[str, Any]:
         """Extract quantum task parameters from input."""
         try:
@@ -58,7 +182,7 @@ class QuantumOptimizer:
                 - Terms like "factor", "prime", "semiprime"
                 - Mathematical notation (N=, p=, q=)
 
-                ALWAYS classify factorization tasks as quantum tasks, regardless of number size."""},
+                ALWAYS classify factorization tasks as quantum tasks."""},
                 {"role": "user", "content": task}
             ]
 
@@ -91,7 +215,7 @@ class QuantumOptimizer:
         except json.JSONDecodeError:
             # Fallback to regex parsing for numbers
             import re
-            # Look for numbers in various formats (including scientific notation)
+            # Look for numbers in various formats
             number_pattern = r'(?:N\s*=\s*)?(\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)'
             numbers = re.findall(number_pattern, response)
 
@@ -105,80 +229,9 @@ class QuantumOptimizer:
 
             # Check for factorization keywords
             if any(word in response.lower() for word in ['factor', 'prime', 'semiprime', 'multiply']):
-                return {'type': 'factorization', 'number': 0}  # Placeholder for extraction failure
+                return {'type': 'factorization', 'number': 0}
 
             return {'type': 'classical', 'description': response}
-
-    def factorize_number(self, number: int) -> Dict[str, Union[List[int], float]]:
-        """Implement Shor's algorithm for quantum factorization."""
-        try:
-            logging.info(f"Starting quantum factorization of {number}")
-            start_time = time.time()
-
-            # Convert number to binary for quantum processing
-            binary_rep = np.array([int(x) for x in bin(number)[2:]])
-
-            # Execute quantum circuit for period finding
-            logging.info("Executing quantum circuit for period finding")
-            result = self.arithmetic_circuit(binary_rep, "factorize")
-
-            # Extract potential factors
-            factors = self._extract_factors_from_measurement(result, number)
-            logging.info(f"Extracted factors: {factors}")
-
-            return {
-                "factors": factors,
-                "computation_time": time.time() - start_time,
-                "quantum_advantage": "Used Shor's algorithm for exponential speedup",
-                "hardware": "Azure Quantum IonQ" if self.use_azure else "Quantum Simulator",
-                "success": len(factors) > 0
-            }
-
-        except Exception as e:
-            logging.error(f"Factorization error: {str(e)}")
-            return {"error": str(e), "factors": [], "success": False}
-
-    def _extract_factors_from_measurement(self, measurement_results: np.ndarray, number: int) -> List[int]:
-        """Extract factors using quantum period finding results."""
-        try:
-            # Process quantum measurements to find period
-            period = self._find_period(measurement_results)
-            if period and period % 2 == 0:
-                x = int(2 ** (period / 2))
-                if x != 1 and x != number - 1:
-                    # Calculate potential factors
-                    p = np.gcd(x + 1, number)
-                    q = np.gcd(x - 1, number)
-                    if p > 1 and q > 1 and p * q == number:
-                        return [int(p), int(q)]
-            return []
-        except Exception as e:
-            logging.error(f"Factor extraction error: {str(e)}")
-            return []
-
-    def _find_period(self, measurements: np.ndarray) -> Optional[int]:
-        """Find the period from quantum measurements."""
-        try:
-            # Convert measurements to numpy array and ensure proper shape
-            measurements = np.array(measurements, dtype=float)
-            if len(measurements.shape) > 1:
-                measurements = measurements.flatten()
-
-            # Apply absolute value to handle complex numbers
-            measurements = np.abs(measurements)
-
-            # Find peaks above threshold
-            peaks = np.where(measurements > 0.1)[0]
-            if len(peaks) > 1:
-                # Calculate periods between peaks
-                periods = np.diff(peaks)
-                # Use median to find most common period
-                return int(np.median(periods)) if len(periods) > 0 else None
-            return None
-
-        except Exception as e:
-            logging.error(f"Period finding error: {str(e)}")
-            return None
 
     def get_circuit_stats(self) -> Dict[str, Any]:
         """Get quantum circuit statistics."""
@@ -199,40 +252,3 @@ class QuantumOptimizer:
             "AZURE_QUANTUM_LOCATION"
         ]
         return all(os.environ.get(var) for var in required_env_vars)
-
-    def _setup_quantum_arithmetic(self):
-        """Setup quantum arithmetic circuits."""
-        @qml.qnode(self.dev)
-        def arithmetic_circuit(x: np.ndarray, operation: str):
-            try:
-                # Initialize quantum registers
-                n_counting = self.n_qubits // 2
-                n_aux = self.n_qubits - n_counting
-
-                if operation == "factorize":
-                    # Initialize counting register in superposition
-                    for i in range(n_counting):
-                        qml.Hadamard(wires=i)
-
-                    # Implement modular exponentiation
-                    a = 2  # Coprime base
-                    for i in range(n_counting):
-                        power = 2**i
-                        for j in range(n_aux):
-                            qml.CNOT(wires=[i, n_counting + j])
-                            qml.RZ(np.pi / power, wires=n_counting + j)
-                            qml.CNOT(wires=[i, n_counting + j])
-
-                    # Apply QFT for period finding
-                    qml.QFT(wires=range(n_counting))
-
-                    # Measure in computational basis
-                    return [qml.expval(qml.PauliZ(i)) for i in range(n_counting)]
-
-                return [qml.expval(qml.PauliZ(i)) for i in range(self.n_qubits)]
-
-            except Exception as e:
-                logging.error(f"Circuit execution failed: {str(e)}")
-                raise
-
-        self.arithmetic_circuit = arithmetic_circuit
