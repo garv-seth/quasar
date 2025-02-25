@@ -24,10 +24,12 @@ class FactorizationManager:
         self.openai_client = AsyncOpenAI()
         self.classical_threshold = 1000000  # Numbers below this use classical method
         self.quantum_threshold = 2**15  # Maximum size for quantum factorization
+        logging.info("Factorization Manager initialized")
 
     async def _get_classical_factors_gpt(self, n: int) -> List[int]:
         """Get factors using GPT with academic prompting."""
         try:
+            logging.info(f"Getting classical factors for {n} using GPT")
             messages = [
                 {"role": "system", "content": """You are a mathematics professor specializing in number theory.
                 When given a number, return ONLY a Python list of ALL its factors in ascending order.
@@ -45,6 +47,7 @@ class FactorizationManager:
             )
 
             factors_str = completion.choices[0].message.content.strip()
+            logging.info(f"GPT response for factors of {n}: {factors_str}")
             # Extract the list from the string and convert to integers
             factors = eval(factors_str)  # Safe since we're controlling the prompt
             return sorted(factors)
@@ -56,6 +59,7 @@ class FactorizationManager:
 
     def _get_basic_factors(self, n: int) -> List[int]:
         """Basic factorization as fallback."""
+        logging.info(f"Using basic factorization for {n}")
         factors = []
         i = 1
         while i * i <= n:
@@ -64,126 +68,91 @@ class FactorizationManager:
                 if i * i != n:
                     factors.append(n // i)
             i += 1
-        return sorted(factors)
-
-    async def _analyze_factorization_approach(self, number: int) -> Dict[str, Any]:
-        """Use AI to analyze and recommend factorization approach."""
-        try:
-            messages = [
-                {"role": "system", "content": f"""Analyze this number for factorization:
-                Number: {number}
-                Classical threshold: {self.classical_threshold}
-                Quantum threshold: {self.quantum_threshold}
-
-                Consider:
-                1. Number size and complexity
-                2. Known factorization patterns
-                3. Computational efficiency
-
-                Return JSON with fields:
-                - method: "classical" or "quantum"
-                - reasoning: explanation
-                - special_case: any special mathematical properties"""},
-                {"role": "user", "content": f"Analyze {number} for factorization"}
-            ]
-
-            completion = await self.openai_client.chat.completions.create(
-                model="gpt-4",
-                messages=messages,
-                max_tokens=300,
-                temperature=0.2
-            )
-
-            import json
-            response = completion.choices[0].message.content
-            return json.loads(response)
-
-        except Exception as e:
-            logging.error(f"AI analysis error: {str(e)}")
-            # Fallback to size-based decision
-            return {
-                "method": "classical" if number < self.classical_threshold else "quantum",
-                "reasoning": "Fallback to size-based decision",
-                "special_case": None
-            }
+        factors = sorted(factors)
+        logging.info(f"Found factors for {n}: {factors}")
+        return factors
 
     async def factorize(self, number: int) -> FactorizationResult:
         """Main factorization method that chooses and executes the appropriate approach."""
         start_time = time.time()
+        logging.info(f"Starting factorization of {number}")
 
         try:
             # Input validation
             if not isinstance(number, int) or number < 1:
+                error_msg = "Invalid input: must be a positive integer"
+                logging.error(error_msg)
                 return FactorizationResult(
                     factors=[],
                     method_used="error",
                     computation_time=0,
                     success=False,
-                    details={"error": "Invalid input: must be a positive integer"}
+                    details={"error": error_msg}
                 )
 
-            # Get AI analysis
-            analysis = await self._analyze_factorization_approach(number)
-            method = analysis.get("method", "classical")
-
-            # Classical factorization for small numbers or when recommended
-            if method == "classical" or number < self.classical_threshold:
+            # For smaller numbers, use classical method
+            if number < self.classical_threshold:
+                logging.info(f"Using classical method for {number}")
                 factors = await self._get_classical_factors_gpt(number)
-                return FactorizationResult(
+                result = FactorizationResult(
                     factors=factors,
                     method_used="classical",
                     computation_time=time.time() - start_time,
                     success=True,
                     details={
-                        "analysis": analysis,
                         "reason": "Used GPT-4 for accurate classical factorization",
                         "backend": "GPT-4"
                     }
                 )
+                logging.info(f"Classical factorization completed: {result}")
+                return result
 
-            # Quantum factorization when available and recommended
-            if self.quantum_optimizer and method == "quantum":
+            # Try quantum factorization for larger numbers
+            if self.quantum_optimizer:
                 try:
+                    logging.info(f"Attempting quantum factorization for {number}")
                     quantum_result = self.quantum_optimizer.factorize_number(number)
                     if quantum_result.get("success", False):
-                        # Get complete factorization using GPT to ensure all factors
+                        # Get complete factorization
                         all_factors = await self._get_classical_factors_gpt(number)
-
-                        return FactorizationResult(
-                            factors=all_factors,  # Use complete factorization
+                        result = FactorizationResult(
+                            factors=all_factors,
                             method_used="quantum",
                             computation_time=time.time() - start_time,
                             success=True,
                             details={
-                                "analysis": analysis,
                                 "quantum_metrics": quantum_result,
-                                "quantum_found_factors": quantum_result.get("factors", []),
                                 "backend": "IonQ Aria-1" if self.quantum_optimizer.use_azure else "IBM Qiskit"
                             }
                         )
+                        logging.info(f"Quantum factorization completed: {result}")
+                        return result
                 except Exception as qe:
                     logging.error(f"Quantum factorization error: {str(qe)}")
 
             # Fallback to classical GPT method
+            logging.info("Falling back to classical method")
             factors = await self._get_classical_factors_gpt(number)
-            return FactorizationResult(
+            result = FactorizationResult(
                 factors=factors,
                 method_used="classical_fallback",
                 computation_time=time.time() - start_time,
                 success=True,
                 details={
-                    "analysis": analysis,
-                    "reason": "Fallback to GPT-4 due to quantum unavailability or error",
+                    "reason": "Used classical method as fallback",
                     "backend": "GPT-4"
                 }
             )
+            logging.info(f"Classical fallback completed: {result}")
+            return result
 
         except Exception as e:
-            logging.error(f"Factorization error: {str(e)}")
+            error_msg = f"Factorization error: {str(e)}"
+            logging.error(error_msg)
             return FactorizationResult(
                 factors=[],
                 method_used="error",
                 computation_time=time.time() - start_time,
                 success=False,
-                details={"error": str(e)}
+                details={"error": error_msg}
             )
