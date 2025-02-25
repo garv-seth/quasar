@@ -24,25 +24,27 @@ class QuantumOptimizer:
 
         try:
             if self.use_azure:
-                # Set up Azure Quantum device
+                # Set up Azure Quantum device using IonQ simulator
                 self.dev = qml.device(
-                    "azure.ionq.simulator",  # Use IonQ simulator through Azure
+                    "ionq.simulator",  # IonQ simulator through Azure
                     wires=n_qubits,
                     shots=1000,  # Number of shots for measurement
-                    subscription_id=os.environ["AZURE_QUANTUM_SUBSCRIPTION_ID"],
-                    resource_group=os.environ["AZURE_QUANTUM_RESOURCE_GROUP"],
-                    workspace_name=os.environ["AZURE_QUANTUM_WORKSPACE_NAME"],
-                    location=os.environ["AZURE_QUANTUM_LOCATION"],
-                    credential=os.environ["AZURE_QUANTUM_ACCESS_KEY"]
+                    azure_credentials={
+                        'subscription_id': os.environ["AZURE_QUANTUM_SUBSCRIPTION_ID"],
+                        'resource_group': os.environ["AZURE_QUANTUM_RESOURCE_GROUP"],
+                        'workspace_name': os.environ["AZURE_QUANTUM_WORKSPACE_NAME"],
+                        'location': os.environ["AZURE_QUANTUM_LOCATION"],
+                        'credential': os.environ["AZURE_QUANTUM_ACCESS_KEY"]
+                    }
                 )
-                logging.info("Successfully initialized Azure Quantum device")
+                logging.info("Successfully initialized Azure Quantum IonQ simulator")
             else:
                 # Fallback to local simulator
                 self.dev = qml.device("default.qubit", wires=n_qubits)
                 logging.info("Using local quantum simulator")
 
         except Exception as e:
-            logging.warning(f"Failed to initialize Azure Quantum device: {str(e)}")
+            logging.error(f"Failed to initialize Azure Quantum device: {str(e)}")
             logging.info("Falling back to local quantum simulator")
             self.dev = qml.device("default.qubit", wires=n_qubits)
             self.use_azure = False
