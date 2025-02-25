@@ -175,12 +175,27 @@ class QuantumOptimizer:
     def _find_period(self, measurements: np.ndarray) -> Optional[int]:
         """Find the period from quantum measurements."""
         try:
-            # Quantum Fourier Transform analysis
+            # Convert measurements to numpy array if it's a list
+            measurements = np.array(measurements)
+
+            # Find peaks in measurement results
+            if len(measurements.shape) > 1:
+                # If multi-dimensional, flatten or take relevant slice
+                measurements = np.abs(measurements.flatten())
+            else:
+                measurements = np.abs(measurements)
+
+            # Find peaks above threshold
             peaks = np.where(measurements > 0.1)[0]
             if len(peaks) > 1:
-                period = abs(peaks[1] - peaks[0])
-                return period if period > 0 else None
+                # Calculate period from peak spacing
+                periods = np.diff(peaks)
+                # Take the most common period
+                if len(periods) > 0:
+                    period = int(np.median(periods))
+                    return period if period > 0 else None
             return None
+
         except Exception as e:
             logging.error(f"Period finding error: {str(e)}")
             return None
@@ -208,49 +223,54 @@ class QuantumOptimizer:
     def _setup_quantum_arithmetic(self):
         """Setup specialized quantum circuits for mathematical operations."""
         @qml.qnode(self.dev)
-        def quantum_arithmetic_circuit(x: np.ndarray, operation: str):
-            # Initialize quantum registers
-            n_counting = self.n_qubits // 2
-            n_aux = self.n_qubits - n_counting
+        def _circuit_definition(x: np.ndarray, operation: str):
+            """Execute the quantum preprocessing circuit."""
+            try:
+                # Initialize quantum registers
+                n_counting = self.n_qubits // 2
+                n_aux = self.n_qubits - n_counting
 
-            if operation == "factorize":
-                # Implement Shor's algorithm components
+                if operation == "factorize":
+                    # Implement Shor's algorithm components
+                    # Initialize counting register in superposition
+                    for i in range(n_counting):
+                        qml.Hadamard(wires=i)
 
-                # Initialize counting register in superposition
-                for i in range(n_counting):
-                    qml.Hadamard(wires=i)
+                    # Implement modular exponentiation
+                    a = 2  # Choose coprime base
+                    for i in range(n_counting):
+                        # Controlled modular multiplication
+                        power = 2**i
+                        for j in range(n_aux):
+                            qml.CNOT(wires=[i, n_counting + j])
+                            qml.RZ(np.pi / power, wires=n_counting + j)
+                            qml.CNOT(wires=[i, n_counting + j])
 
-                # Implement modular exponentiation
-                a = 2  # Choose coprime base
-                for i in range(n_counting):
-                    # Controlled modular multiplication
-                    power = 2**i
-                    for j in range(n_aux):
-                        qml.CNOT(wires=[i, n_counting + j])
-                        qml.RZ(np.pi / power, wires=n_counting + j)
-                        qml.CNOT(wires=[i, n_counting + j])
+                    # Quantum Fourier Transform on counting register
+                    qml.QFT(wires=range(n_counting))
 
-                # Quantum Fourier Transform on counting register
-                qml.QFT(wires=range(n_counting))
+                    # Return measurements for period finding
+                    return [qml.expval(qml.PauliZ(i)) for i in range(n_counting)]
 
-                # Return measurement probabilities for period finding
-                return [qml.expval(qml.PauliZ(i)) for i in range(n_counting)]
+                elif operation == "optimize":
+                    # QAOA circuit for optimization problems
+                    for layer in range(self.n_layers):
+                        # Problem unitary
+                        for i in range(self.n_qubits - 1):
+                            qml.CNOT(wires=[i, i + 1])
+                            qml.RZ(x[layer, i], wires=i + 1)
+                            qml.CNOT(wires=[i, i + 1])
 
-            elif operation == "optimize":
-                # QAOA circuit for optimization problems
-                for layer in range(self.n_layers):
-                    # Problem unitary
-                    for i in range(self.n_qubits - 1):
-                        qml.CNOT(wires=[i, i + 1])
-                        qml.RZ(self.params[layer, i, 0], wires=i + 1)
-                        qml.CNOT(wires=[i, i + 1])
+                        # Mixing unitary
+                        for i in range(self.n_qubits):
+                            qml.RX(x[layer, i], wires=i)
 
-                    # Mixing unitary
-                    for i in range(self.n_qubits):
-                        qml.RX(self.params[layer, i, 1], wires=i)
+                    return [qml.expval(qml.PauliZ(i)) for i in range(self.n_qubits)]
 
                 return [qml.expval(qml.PauliZ(i)) for i in range(self.n_qubits)]
 
-            return [qml.expval(qml.PauliZ(i)) for i in range(self.n_qubits)]
+            except Exception as e:
+                logging.error(f"Circuit execution failed: {str(e)}")
+                raise
 
-        self.arithmetic_circuit = quantum_arithmetic_circuit
+        self.arithmetic_circuit = _circuit_definition
