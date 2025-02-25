@@ -204,7 +204,21 @@ def main():
                     # Display results
                     if result['task_type'] == 'factorization':
                         st.markdown("### 📊 Factorization Results")
-                        st.json(result['quantum_result'])
+                        if 'quantum_result' in result:
+                            if result['quantum_result'].get('success', False):
+                                factors = result['quantum_result']['factors']
+                                factors_str = ", ".join(map(str, factors))
+                                st.success(f"All factors: {factors_str}")
+
+                                # Show computation method
+                                method = result['quantum_result'].get('hardware', 'Unknown')
+                                st.info(f"Computation method: {method}")
+
+                                # Show computation time
+                                time = result['quantum_result'].get('computation_time', 0)
+                                st.write(f"Computation time: {time:.4f} seconds")
+                            else:
+                                st.warning("No factors found or computation failed")
                     else:
                         st.markdown("### 📝 Analysis Results")
                         st.write(result.get('classical_result', {}))

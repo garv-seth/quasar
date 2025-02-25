@@ -1,4 +1,4 @@
-"""Q3A Agent with updated OpenAI integration."""
+"""Q3A Agent with updated OpenAI integration and factorization management."""
 
 import numpy as np
 import pennylane as qml
@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session
 import aiohttp
 from openai import AsyncOpenAI
 import logging
+
+from quantum_agent_framework.quantum.factorization_manager import FactorizationManager
+from quantum_agent_framework.quantum.optimizer import QuantumOptimizer
 
 class Q3Agent:
     """Quantum-Accelerated AI Agent (Q3A) demonstrating quantum advantages"""
@@ -22,16 +25,9 @@ class Q3Agent:
             shots=1000
         )
 
-        # Initialize quantum circuit parameters
-        n_layers = 2
-        self.params = np.random.uniform(
-            low=-np.pi,
-            high=np.pi,
-            size=(n_layers, self.num_qubits, 4)
-        )
-
-        # Create quantum circuit
-        self.circuit = qml.QNode(self._create_circuit, self.dev)
+        # Initialize quantum components
+        self.quantum_optimizer = QuantumOptimizer(n_qubits=self.num_qubits)
+        self.factorization_manager = FactorizationManager(self.quantum_optimizer)
 
         # Initialize OpenAI client for task processing
         self.openai_client = AsyncOpenAI()
@@ -49,21 +45,74 @@ class Q3Agent:
             # Initialize session if not already done
             await self.initialize_session()
 
-            # Get quantum-enhanced decision
+            # First, let's analyze if this is a factorization task
+            try:
+                analysis = await self.quantum_optimizer.preprocess_input(task)
+                if analysis.get('type') == 'factorization':
+                    number = analysis.get('number')
+                    if number:
+                        # Use factorization manager for proper handling
+                        factorization_result = await self.factorization_manager.factorize(number)
+
+                        result = {
+                            "task_completed": True,
+                            "factorization_result": {
+                                "number": number,
+                                "factors": factorization_result.factors,
+                                "method_used": factorization_result.method_used,
+                                "computation_time": factorization_result.computation_time,
+                                "details": factorization_result.details
+                            }
+                        }
+
+                        # Process with GPT-4o for natural language response
+                        factors_str = ", ".join(map(str, factorization_result.factors))
+                        method_explanation = (
+                            "quantum-assisted" if factorization_result.method_used == "quantum"
+                            else "classical"
+                        )
+
+                        gpt_prompt = f"""
+                        The number {number} has been factored using {method_explanation} computation.
+                        Factors found: {factors_str}
+                        Computation time: {factorization_result.computation_time:.4f} seconds
+
+                        Please provide a clear, concise explanation of these results.
+                        """
+
+                        completion = await self.openai_client.chat.completions.create(
+                            model="gpt-4o",
+                            messages=[
+                                {"role": "system", "content": "You are a quantum computing expert explaining factorization results."},
+                                {"role": "user", "content": gpt_prompt}
+                            ],
+                            max_tokens=150,
+                            temperature=0.7
+                        )
+
+                        result["response"] = completion.choices[0].message.content
+                        result["quantum_metrics"] = self.get_quantum_metrics(factorization_result)
+
+                        # Update task result and metrics in database
+                        crud.update_task_result(db, db_task.id, result, factorization_result.computation_time)
+                        return result
+
+            except Exception as factor_err:
+                logging.error(f"Factorization processing error: {str(factor_err)}")
+
+            # For non-factorization tasks, continue with standard processing
             task_encoding = np.array([ord(c) % (2*np.pi) for c in task[:self.num_qubits]])
             quantum_decision = self.circuit(self.params, task_encoding)
 
             # Process task using OpenAI's GPT-4o
             try:
-                # the newest OpenAI model is "gpt-4o" which was released May 13, 2024.
-                # do not change this unless explicitly requested by the user
                 messages = [
                     {"role": "system", "content": "You are a quantum-enhanced AI assistant."},
                     {"role": "user", "content": task}
                 ]
 
                 completion = await self.openai_client.chat.completions.create(
-                    model="gpt-4o",  # Updated model name
+                    model="gpt-4o",
                     messages=messages,
                     max_tokens=1000,
                     temperature=0.7
@@ -73,7 +122,6 @@ class Q3Agent:
 
             except Exception as api_err:
                 logging.error(f"OpenAI API error: {str(api_err)}")
-                # Fallback to a simpler response
                 response_content = "I apologize, but I'm having trouble processing your request right now."
 
             result = {
@@ -85,24 +133,14 @@ class Q3Agent:
             # Calculate execution time
             execution_time = time.time() - start_time
 
-            # Store results and metrics
+            # Update task and metrics in database
             task_result = {
                 "task_result": result,
                 "execution_time": f"{execution_time:.2f} seconds",
                 "quantum_advantage": "Enhanced decision making through quantum superposition"
             }
 
-            # Update task and metrics in database
             crud.update_task_result(db, db_task.id, task_result, execution_time)
-
-            metrics = {
-                "quantum_advantage": 22.0,  # percentage improvement
-                "memory_efficiency": 17.0,
-                "circuit_depth": len(self.params) * self.num_qubits,
-                "qubit_count": self.num_qubits
-            }
-            crud.create_quantum_metrics(db, db_task.id, metrics)
-
             return task_result
 
         except Exception as e:
@@ -111,25 +149,46 @@ class Q3Agent:
                 crud.update_task_result(db, db_task.id, {"error": str(e)}, time.time() - start_time)
             raise
 
+    def get_quantum_metrics(self, factorization_result=None) -> Dict[str, str]:
+        """Get quantum performance metrics with factorization details if available."""
+        metrics = {
+            "Circuit Coherence": f"{np.mean(self.params):.2f}",
+            "Circuit Depth": str(len(self.params) * self.num_qubits),
+            "Quantum Advantage": "22% faster processing (simulated)",
+            "Memory Efficiency": "17% improved efficiency (simulated)"
+        }
+
+        if factorization_result:
+            metrics.update({
+                "Computation Method": factorization_result.method_used,
+                "Computation Time": f"{factorization_result.computation_time:.4f} seconds",
+                "Success Rate": "100%" if factorization_result.success else "0%"
+            })
+
+            if "quantum_metrics" in factorization_result.details:
+                metrics.update(factorization_result.details["quantum_metrics"])
+
+        return metrics
+
     async def initialize_session(self):
         """Initialize aiohttp session for web requests"""
         if not self.session:
             self.session = aiohttp.ClientSession()
 
     def _create_circuit(self, params, state):
-        """Create quantum circuit for decision acceleration using IonQ native gates"""
+        """Create quantum circuit for decision acceleration"""
         try:
-            # Encode input state using IonQ native gates
+            # Encode input state
             for i in range(min(len(state), self.num_qubits)):
                 qml.RY(state[i], wires=i)
 
-            # Apply quantum layers with IonQ-native operations
+            # Apply quantum layers with native operations
             for layer in range(len(params)):
-                # Apply rotations (native to IonQ)
+                # Apply rotations
                 for i in range(self.num_qubits):
                     qml.Rot(*params[layer, i, :3], wires=i)
 
-                # Apply entanglement with native CNOT
+                # Apply entanglement
                 for i in range(self.num_qubits - 1):
                     qml.CNOT(wires=[i, i + 1])
 
@@ -139,12 +198,3 @@ class Q3Agent:
         except Exception as e:
             logging.error(f"Circuit error: {str(e)}")
             raise
-
-    def get_quantum_metrics(self) -> Dict[str, str]:
-        """Get quantum performance metrics"""
-        return {
-            "Circuit Coherence": f"{np.mean(self.params):.2f}",
-            "Circuit Depth": str(len(self.params) * self.num_qubits),
-            "Quantum Advantage": "22% faster processing (simulated)",
-            "Memory Efficiency": "17% improved efficiency (simulated)"
-        }
