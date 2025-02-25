@@ -42,7 +42,7 @@ st.markdown("""
         font-size: 1.1em;
         margin: 1rem 0;
     }
-    .mathematical-result {
+    .factorization-result {
         background-color: #e3f2fd;
         padding: 1rem;
         border-radius: 8px;
@@ -94,25 +94,28 @@ def display_quantum_metrics(metrics: Dict[str, Any]):
                      f"{metrics.get('quantum_advantage', '0')}x faster" 
                      if metrics.get('quantum_advantage') else "N/A")
 
-        # Display specialized metrics for mathematical tasks
-        if 'quantum_result' in metrics:
-            st.markdown('<div class="mathematical-result">', unsafe_allow_html=True)
-            st.markdown("#### 🧮 Mathematical Computation Results")
+        # Display quantum result for factorization
+        if metrics.get('quantum_result'):
+            st.markdown('<div class="factorization-result">', unsafe_allow_html=True)
+            st.markdown("#### 🧮 Factorization Results")
+            quantum_result = metrics['quantum_result']
 
-            # Display factorization or optimization results
-            if 'factors' in metrics['quantum_result']:
-                st.write("Factorization Results:", metrics['quantum_result']['factors'])
-                st.write("Computation Time:", f"{metrics['quantum_result']['computation_time']:.2f} seconds")
-            elif 'optimal_solution' in metrics['quantum_result']:
-                st.write("Optimization Results:", metrics['quantum_result']['optimal_solution'])
-                st.write("Convergence Status:", metrics['quantum_result']['convergence'])
+            if quantum_result.get('factors'):
+                factors = quantum_result['factors']
+                st.success(f"Found factors: {' × '.join(map(str, factors))}")
+                if len(factors) == 2:
+                    st.write(f"Verification: {factors[0]} × {factors[1]} = {factors[0] * factors[1]}")
+            else:
+                st.warning("No factors found in quantum computation")
 
+            st.write(f"Computation Time: {quantum_result.get('computation_time', 0):.2f} seconds")
+            st.write(f"Hardware Used: {quantum_result.get('hardware', 'Unknown')}")
             st.markdown('</div>', unsafe_allow_html=True)
 
-        # Display sources section
-        if 'sources' in metrics and metrics['sources']:
+        # Display sources section if available
+        if 'sources' in metrics and metrics['sources'] and metrics['sources'][0]['title'] != 'N/A':
             st.markdown('<div class="source-section">', unsafe_allow_html=True)
-            st.markdown("#### 📚 Academic and Government Sources")
+            st.markdown("#### 📚 Quantum Computing Research Sources")
             for source in metrics['sources']:
                 st.markdown(f"- [{source['title']}]({source['url']})")
             st.markdown('</div>', unsafe_allow_html=True)
@@ -198,9 +201,9 @@ def main():
                         unsafe_allow_html=True
                     )
 
-                    # Display results based on task type
-                    if result['task_type'] == 'mathematical':
-                        st.markdown("### 📊 Mathematical Results")
+                    # Display results
+                    if result['task_type'] == 'factorization':
+                        st.markdown("### 📊 Factorization Results")
                         st.json(result['quantum_result'])
                     else:
                         st.markdown("### 📝 Analysis Results")
