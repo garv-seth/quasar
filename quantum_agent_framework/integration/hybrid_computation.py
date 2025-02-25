@@ -125,70 +125,64 @@ class HybridComputation:
 
     async def _gather_academic_sources(self, task: str, processing_type: str) -> List[Dict[str, str]]:
         """Gather relevant quantum computing research sources."""
-        sources = []
         try:
-            # Select relevant search terms based on processing type
             if processing_type == 'quantum_mathematical':
+                # For factorization tasks, look for Shor's algorithm papers
                 search_terms = [
-                    "Shor's algorithm implementation",
-                    "quantum factorization",
-                    "quantum number theory"
+                    "quantum+factorization+Shor+algorithm",
+                    "quantum+number+theory+factoring"
                 ]
             elif processing_type == 'quantum_optimization':
                 search_terms = [
-                    "quantum approximate optimization",
-                    "QAOA algorithm",
-                    "quantum annealing"
+                    "quantum+optimization+QAOA",
+                    "quantum+annealing+optimization"
                 ]
             else:
-                search_terms = [
-                    "quantum computing applications",
-                    "quantum-classical hybrid"
-                ]
+                # For classical tasks, don't fetch sources
+                return [{"title": "N/A", "url": "N/A"}]
 
+            sources = []
             async with aiohttp.ClientSession() as session:
-                # Query arXiv for relevant papers
-                for term in search_terms[:2]:
+                for term in search_terms:
                     try:
                         async with session.get(
                             self.api_endpoints["arxiv"],
                             params={
                                 "search_query": f"all:{term}",
-                                "max_results": 3,
-                                "sortBy": "lastUpdatedDate"
+                                "max_results": 2,
+                                "sortBy": "relevance"
                             }
                         ) as response:
                             if response.status == 200:
                                 data = await response.text()
-                                # Parse arXiv XML response
                                 root = ET.fromstring(data)
+
+                                # Only include papers with matching keywords
                                 for entry in root.findall('{http://www.w3.org/2005/Atom}entry'):
                                     title = entry.find('{http://www.w3.org/2005/Atom}title').text
+                                    summary = entry.find('{http://www.w3.org/2005/Atom}summary').text
                                     link = entry.find('{http://www.w3.org/2005/Atom}id').text
-                                    sources.append({
-                                        "title": title,
-                                        "url": link
-                                    })
+
+                                    # Check if title or summary contains relevant keywords
+                                    keywords = ['shor', 'factor', 'quantum', 'optimization']
+                                    if any(keyword in title.lower() or keyword in summary.lower() 
+                                          for keyword in keywords):
+                                        sources.append({
+                                            "title": title,
+                                            "url": link
+                                        })
                     except Exception as e:
                         logging.error(f"Error fetching arXiv data: {str(e)}")
 
-            # Add quantum computing platform documentation
-            sources.extend([
-                {
-                    "title": "Azure Quantum Documentation - IonQ Integration",
-                    "url": "https://learn.microsoft.com/azure/quantum/provider-ionq"
-                },
-                {
-                    "title": "Quantum Algorithm Implementation Guide",
-                    "url": "https://quantum-computing.ibm.com/lab/docs/iql/manage/algorithms"
-                }
-            ])
+            # If no relevant sources found
+            if not sources:
+                return [{"title": "No relevant quantum computing papers found", "url": "N/A"}]
 
             return sources
 
         except Exception as e:
             logging.error(f"Error gathering sources: {str(e)}")
-            return []
+            return [{"title": "Error fetching sources", "url": "N/A"}]
 
     async def _classical_process(self, task: str) -> Dict[str, Any]:
         """Process task using classical computing resources."""

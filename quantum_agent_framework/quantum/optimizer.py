@@ -50,25 +50,18 @@ class QuantumOptimizer:
         try:
             messages = [
                 {"role": "system", "content": """You are a quantum computing task analyzer. 
-                Analyze tasks and determine if they should use quantum computing based on these criteria:
+                IMPORTANT: For ANY number factorization task, ALWAYS classify it as quantum factorization
+                regardless of number size, as Shor's algorithm provides exponential speedup.
 
-                1. Quantum Factorization (ALWAYS use for numbers > 1M)
-                - Integer factorization using Shor's algorithm
-                - Provides exponential speedup over classical methods
-                - Example: Factoring RSA numbers
+                Format response as JSON with type and parameters:
+                1. For factorization:
+                {"type": "factorization", "number": <extracted_number>}
 
-                2. Quantum Optimization (for complex resource allocation)
-                - NP-hard optimization problems
-                - Traveling Salesman Problem
-                - Maximum Cut Problem
+                2. For optimization:
+                {"type": "optimization", "parameters": {...}}
 
-                3. Classical Processing (default for other tasks)
-                - Basic arithmetic
-                - Text processing
-                - Simple numerical calculations
-
-                Format response as JSON with task type and parameters.
-                For factorization, ALWAYS choose quantum for large numbers."""},
+                3. For general queries:
+                {"type": "classical", "description": "query description"}"""},
                 {"role": "user", "content": task}
             ]
 
@@ -87,29 +80,37 @@ class QuantumOptimizer:
             return {"type": "error", "error": str(e)}
 
     def _parse_ai_response(self, response: str) -> Dict[str, Any]:
-        """Parse AI response with improved task classification."""
+        """Parse AI response for improved quantum task routing."""
         import json
         try:
+            # First try to extract directly from the JSON response
             params = json.loads(response)
 
-            # Always use quantum for large number factorization
+            # For factorization tasks, always use quantum
             if params.get('type') == 'factorization':
                 number = params.get('number')
                 if number and str(number).isdigit():
-                    number = int(number)
-                    return {'type': 'factorization', 'number': number}
+                    return {'type': 'factorization', 'number': int(number)}
 
+            # For optimization tasks
             elif params.get('type') == 'optimization':
                 return {'type': 'optimization', 'parameters': params.get('parameters', {})}
 
+            # For classical processing
             return {'type': 'classical', 'description': params.get('description', '')}
 
         except json.JSONDecodeError:
-            # Extract numbers for factorization tasks
+            # Fallback to parsing the text for numbers
             import re
-            numbers = [int(n) for n in re.findall(r'\d+', response) if len(n) > 6]
+            # Look for numbers in scientific or decimal notation
+            numbers = re.findall(r'\d+(?:\.\d+)?(?:[eE][-+]?\d+)?', response)
             if numbers:
-                return {'type': 'factorization', 'number': numbers[0]}
+                # Convert the first found number
+                try:
+                    number = int(float(numbers[0]))
+                    return {'type': 'factorization', 'number': number}
+                except ValueError:
+                    pass
             return {'type': 'classical', 'description': response}
 
     def factorize_number(self, number: int) -> Dict[str, Union[List[int], float]]:
