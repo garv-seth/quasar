@@ -3,9 +3,10 @@
 import streamlit as st
 import plotly.graph_objects as go
 from quantum_agent_framework.integration import HybridComputation
-from quantum_agent_framework.agents.web_agent import WebAgent
 import asyncio
 import logging
+import re
+from typing import Dict, Any, List
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -35,176 +36,86 @@ st.markdown("""
         padding: 1rem;
         margin: 1rem 0;
     }
-    .stats-container {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 1rem;
+    .processing-type {
+        color: #1e88e5;
+        font-weight: bold;
+        font-size: 1.1em;
+        margin: 1rem 0;
     }
-    .analysis-section {
-        background-color: white;
-        padding: 1.5rem;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        margin-bottom: 1rem;
-    }
-    .metric-explanation {
-        font-size: 0.9em;
-        color: #666;
-        margin-top: 0.5rem;
-    }
-    .content-section {
-        margin: 1.5rem 0;
+    .mathematical-result {
+        background-color: #e3f2fd;
         padding: 1rem;
-        background: white;
         border-radius: 8px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        margin: 1rem 0;
     }
-    .section-header {
-        color: #2c3e50;
-        font-size: 1.2rem;
-        margin-bottom: 1rem;
-        border-bottom: 2px solid #e0e0e0;
-        padding-bottom: 0.5rem;
+    .source-section {
+        background-color: #f5f5f5;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-top: 1rem;
     }
 </style>
 """, unsafe_allow_html=True)
 
-async def analyze_with_quantum(task: str, n_qubits: int, use_quantum: bool = True):
+async def analyze_with_quantum(task: str, n_qubits: int, use_quantum: bool = True) -> Dict[str, Any]:
     """Analyze content with quantum acceleration."""
     try:
-        # Initialize agents with user-specified qubit count
-        st.session_state.hybrid_computer = HybridComputation(
+        # Initialize hybrid computation system
+        hybrid_computer = HybridComputation(
             n_qubits=n_qubits,
             use_quantum=use_quantum,
             use_azure=True
         )
-        st.session_state.web_agent = WebAgent(
-            optimizer=st.session_state.hybrid_computer.quantum_optimizer,
-            preprocessor=st.session_state.hybrid_computer.quantum_preprocessor
-        )
 
-        result = await st.session_state.web_agent.analyze_content(task)
+        # Process the task
+        result = await hybrid_computer.process_task(task)
         return result
 
     except Exception as e:
-        logging.error(f"Error during quantum analysis: {str(e)}")
+        logging.error(f"Error during analysis: {str(e)}")
         return {"error": str(e)}
 
-def display_quantum_metrics(metrics: dict):
-    """Display quantum processing metrics with visualizations and explanations."""
+def display_quantum_metrics(metrics: Dict[str, Any]):
+    """Display quantum processing metrics with enhanced visualization."""
     try:
-        st.markdown('<div class="content-section">', unsafe_allow_html=True)
+        st.markdown('<div class="quantum-metrics">', unsafe_allow_html=True)
         st.markdown("### 🔄 Quantum Processing Metrics")
 
-        # Display key metrics in columns with explanations
+        # Display key metrics
         cols = st.columns(4)
         with cols[0]:
-            st.metric("Quantum Confidence", f"{metrics['quantum_confidence']:.1f}%")
-            st.markdown("""
-            <div class="metric-explanation">
-            Measures the quantum circuit's confidence in its analysis based on measurement outcomes.
-            Higher values indicate more certain results.
-            </div>
-            """, unsafe_allow_html=True)
-
+            st.metric("Processing Type", metrics.get('processing_type', 'Unknown'))
         with cols[1]:
-            st.metric("Qubits Used", metrics['circuit_stats']['n_qubits'])
-            st.markdown("""
-            <div class="metric-explanation">
-            Number of quantum bits (qubits) used in the computation.
-            More qubits enable processing more data dimensions simultaneously.
-            </div>
-            """, unsafe_allow_html=True)
-
+            st.metric("Qubits Used", metrics.get('n_qubits', 0))
         with cols[2]:
-            st.metric("Circuit Depth", metrics['circuit_stats']['circuit_depth'])
-            st.markdown("""
-            <div class="metric-explanation">
-            Number of sequential quantum operations.
-            Lower depth means faster quantum processing.
-            </div>
-            """, unsafe_allow_html=True)
-
+            st.metric("Circuit Depth", metrics.get('circuit_depth', 0))
         with cols[3]:
-            st.metric("Processing Time", f"{metrics['processing_time_ms']:.0f}ms")
-            st.markdown("""
-            <div class="metric-explanation">
-            Time taken for quantum circuit execution.
-            Excludes classical pre/post-processing time.
-            </div>
-            """, unsafe_allow_html=True)
+            st.metric("Quantum Advantage", 
+                     f"{metrics.get('quantum_advantage', '0')}x faster" 
+                     if metrics.get('quantum_advantage') else "N/A")
 
-        # Display quantum advantage metrics with detailed explanations
-        st.markdown('<div class="content-section">', unsafe_allow_html=True)
-        st.markdown("#### ⚡ Performance Comparison")
-        st.markdown("""
-        Comparing quantum vs classical processing performance:
-        """)
+        # Display specialized metrics for mathematical tasks
+        if 'quantum_result' in metrics:
+            st.markdown('<div class="mathematical-result">', unsafe_allow_html=True)
+            st.markdown("#### 🧮 Mathematical Computation Results")
 
-        # Create performance comparison visualization
-        fig = go.Figure()
+            # Display factorization or optimization results
+            if 'factors' in metrics['quantum_result']:
+                st.write("Factorization Results:", metrics['quantum_result']['factors'])
+                st.write("Computation Time:", f"{metrics['quantum_result']['computation_time']:.2f} seconds")
+            elif 'optimal_solution' in metrics['quantum_result']:
+                st.write("Optimization Results:", metrics['quantum_result']['optimal_solution'])
+                st.write("Convergence Status:", metrics['quantum_result']['convergence'])
 
-        # Add side-by-side bars for time comparison
-        fig.add_trace(go.Bar(
-            x=['Processing Time'],
-            y=[metrics['quantum_advantage']['quantum_time_ms']],
-            name='Quantum',
-            marker_color='rgb(55, 83, 109)'
-        ))
+            st.markdown('</div>', unsafe_allow_html=True)
 
-        fig.add_trace(go.Bar(
-            x=['Processing Time'],
-            y=[metrics['quantum_advantage']['classical_time_ms']],
-            name='Classical',
-            marker_color='rgb(26, 118, 255)'
-        ))
-
-        fig.update_layout(
-            title='Quantum vs Classical Processing Time',
-            yaxis_title='Time (milliseconds)',
-            barmode='group',
-            plot_bgcolor='rgba(0,0,0,0)',
-            showlegend=True
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
-
-        adv_cols = st.columns(2)
-        with adv_cols[0]:
-            speedup = metrics['quantum_advantage']['speedup']
-            st.metric(
-                "Speed Comparison",
-                f"{speedup}x {'faster' if float(speedup.rstrip('x')) > 1 else 'slower'} than classical"
-            )
-            st.markdown(f"""
-            <div class="metric-explanation">
-            Quantum processing time: {metrics['quantum_advantage']['quantum_time_ms']:.2f}ms<br>
-            Classical processing time: {metrics['quantum_advantage']['classical_time_ms']:.2f}ms<br>
-            This comparison shows the relative speed of quantum vs classical processing for the current task.
-            </div>
-            """, unsafe_allow_html=True)
-
-        with adv_cols[1]:
-            st.metric("Accuracy Improvement", metrics['quantum_advantage']['accuracy_improvement'])
-            st.markdown("""
-            <div class="metric-explanation">
-            Improvement in accuracy using quantum superposition and interference effects.
-            Shows enhancement in feature detection and pattern matching compared to classical methods.
-            </div>
-            """, unsafe_allow_html=True)
-
-        # Display technical details in expander
-        with st.expander("🔍 Detailed Quantum Circuit Statistics"):
-            st.json(metrics['circuit_stats'])
-            st.markdown("""
-            <div class="metric-explanation">
-            <b>Understanding the metrics:</b><br>
-            - n_qubits: Number of quantum bits used for parallel processing<br>
-            - circuit_depth: Number of sequential operations (lower is better)<br>
-            - total_gates: Total quantum operations performed<br>
-            - optimization_steps: Number of iterations to optimize the circuit
-            </div>
-            """, unsafe_allow_html=True)
+        # Display sources section
+        if 'sources' in metrics and metrics['sources']:
+            st.markdown('<div class="source-section">', unsafe_allow_html=True)
+            st.markdown("#### 📚 Academic and Government Sources")
+            for source in metrics['sources']:
+                st.markdown(f"- [{source['title']}]({source['url']})")
+            st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -216,14 +127,20 @@ def main():
     st.title("⚛️ QUASAR: Quantum Search and Reasoning")
     st.markdown("""
     *Quantum-Accelerated AI Agent (Q3A) powered by Azure Quantum and IonQ*
+
+    Specialized in:
+    - 🧮 Large number factorization
+    - 📊 Resource optimization
+    - 🔄 Parallel computing
+    - 📚 Academic research integration
     """)
 
     # Sidebar for advanced settings
     with st.sidebar:
-        st.header("⚙️ Advanced Settings")
+        st.header("⚙️ Quantum Settings")
 
         use_quantum = st.checkbox("Enable Quantum Acceleration", value=True)
-        n_qubits = 8  # Default value
+        n_qubits = 8
 
         if use_quantum:
             n_qubits = st.slider(
@@ -231,90 +148,73 @@ def main():
                 min_value=4,
                 max_value=29,
                 value=8,
-                help="More qubits allow processing more data dimensions but increase circuit complexity"
-            )
-            backend = st.selectbox(
-                "Quantum Backend",
-                ["Azure IonQ Simulator", "IonQ Aria-1"],
-                help="Select quantum processing backend. Aria-1 provides real quantum hardware access"
+                help="More qubits allow processing larger numbers and more complex optimizations"
             )
 
-            if backend == "IonQ Aria-1":
-                st.warning("""
-                Using real quantum hardware (Aria-1) may increase processing time
-                but provides true quantum advantage for complex calculations.
-                """)
+            task_type = st.radio(
+                "Task Type",
+                ["Mathematical", "Optimization", "General"],
+                help="Select the type of task to optimize quantum resource usage"
+            )
 
-        st.markdown("---")
-        st.markdown("""
-        ### 🧪 About QUASAR
-        **Q**uantum **U**nified **S**earch **A**nd **R**easoning
+            st.markdown("---")
+            st.markdown("""
+            ### 🧪 About QUASAR
 
-        This framework leverages:
-        1. IonQ quantum processors for parallel data processing
-        2. Quantum circuits optimized for text analysis
-        3. Hybrid quantum-classical processing with GPT-4o
+            Specialized Capabilities:
+            1. **Number Factorization**: Using Shor's algorithm
+            2. **Resource Optimization**: Quantum-enhanced QAOA
+            3. **Parallel Computing**: Quantum superposition
+            4. **Academic Integration**: Direct access to research databases
 
-        The quantum advantage comes from:
-        - Parallel processing of multiple data dimensions
-        - Quantum superposition for feature comparison
-        - Interference-based relevance scoring
-
-        Powered by Azure Quantum & OpenAI
-        """)
+            Powered by Azure Quantum & IonQ
+            """)
 
     # Main interface
     task = st.text_area(
-        "What would you like me to analyze?",
-        placeholder="Example: Analyze trends in the job market for quantum computing professionals",
-        help="I can analyze market trends, industry data, and provide insights using quantum-accelerated processing"
+        "Enter your query:",
+        placeholder="""Examples:
+- Factor a large number: "Factor 15226050279225333605356183781326374297180681149613"
+- Optimize resources: "Optimize distribution of 1000 items across 50 locations"
+- General query: "Analyze recent quantum computing breakthroughs"
+        """,
+        help="For mathematical tasks, quantum computing will be used for exponential speedup"
     )
 
-    if st.button("🚀 Analyze", disabled=not task):
+    if st.button("🚀 Process", disabled=not task):
         with st.spinner("🔄 Processing with quantum acceleration..."):
             try:
                 # Create event loop for async execution
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
 
-                # Execute analysis with quantum acceleration
+                # Execute analysis
                 result = loop.run_until_complete(analyze_with_quantum(task, n_qubits, use_quantum))
 
                 if result and 'error' not in result:
-                    # Display analysis results in a structured format
-                    st.markdown('<div class="content-section">', unsafe_allow_html=True)
-                    st.markdown("### 📝 Analysis Results")
+                    # Display processing type
+                    st.markdown(
+                        f'<div class="processing-type">Processing Type: {result["task_type"].upper()}</div>',
+                        unsafe_allow_html=True
+                    )
 
-                    # Parse and display analysis sections
-                    sections = result['analysis'].split('\n\n')
-                    current_section = ""
-
-                    for section in sections:
-                        if section.strip():
-                            # Check if this is a new section header
-                            if any(section.strip().startswith(str(i) + '.') for i in range(1, 6)):
-                                st.markdown(f"#### {section.strip()}")
-                                current_section = section.strip()
-                            else:
-                                # This is content for the current section
-                                st.markdown(section.strip())
-
-                    st.markdown('</div>', unsafe_allow_html=True)
+                    # Display results based on task type
+                    if result['task_type'] == 'mathematical':
+                        st.markdown("### 📊 Mathematical Results")
+                        st.json(result['quantum_result'])
+                    else:
+                        st.markdown("### 📝 Analysis Results")
+                        st.write(result.get('classical_result', {}))
 
                     # Display quantum metrics
-                    display_quantum_metrics(result['quantum_metrics'])
-
-                    # Show sources
-                    st.markdown("### 📚 Sources")
-                    for url in result['quantum_metrics']['sources']:
-                        st.markdown(f"- {url}")
+                    display_quantum_metrics(result)
 
                 else:
                     st.error("An error occurred during analysis. Please try again.")
 
             except Exception as e:
                 logging.error(f"Error during analysis: {str(e)}")
-                st.error(f"An error occurred during analysis. Please try again.")
+                st.error("An error occurred during analysis. Please try again.")
 
 if __name__ == "__main__":
     main()
