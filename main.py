@@ -13,6 +13,28 @@ st.set_page_config(
     layout="wide"
 )
 
+def format_quantum_results(result: dict) -> str:
+    """Format quantum processing results into user-friendly text."""
+    if result.get('error'):
+        return f"Error processing request: {result.get('message', 'Unknown error')}"
+
+    # Get quantum confidence from optimization history
+    confidence = 0.0
+    if 'optimization_history' in result:
+        # More negative value means higher confidence
+        confidence = min(100, abs(result['optimization_history'][-1]) * 100)
+
+    task_class = result.get('task_class', 0)
+    task_types = ['Information Retrieval', 'Analysis']
+
+    response = f"Task Type: {task_types[task_class]}\n"
+    response += f"Processing Confidence: {confidence:.1f}%\n"
+
+    if result.get('quantum_error'):
+        response += "\nNote: Quantum processing encountered an issue and fell back to classical processing."
+
+    return response
+
 def main():
     st.title("⚛️ QUASAR: Quantum-Accelerated Search and Reasoning")
     st.markdown("""
@@ -64,9 +86,27 @@ def main():
                     # Process task
                     result = st.session_state.hybrid_computer.process_task(task)
 
-                    # Display results
-                    st.success("Task completed successfully!")
-                    st.json(result)
+                    # Display formatted results
+                    st.success("Task processed successfully!")
+
+                    # Show quantum processing details
+                    with st.expander("Quantum Processing Details"):
+                        st.write(format_quantum_results(result))
+
+                        # Visualization of optimization progress
+                        if 'optimization_history' in result:
+                            fig = go.Figure()
+                            fig.add_trace(go.Scatter(
+                                y=result['optimization_history'],
+                                mode='lines',
+                                name='Optimization Progress'
+                            ))
+                            fig.update_layout(
+                                title='Quantum Optimization Progress',
+                                xaxis_title='Step',
+                                yaxis_title='Cost'
+                            )
+                            st.plotly_chart(fig)
 
                     # Update memory
                     st.session_state.memory.add('user', task)
@@ -76,7 +116,7 @@ def main():
                     st.error(f"Error processing task: {str(e)}")
 
     with col2:
-        st.subheader("Quantum Metrics")
+        st.subheader("Quantum System Status")
 
         # Get quantum parameters from session
         metrics = st.session_state.hybrid_computer.get_quantum_metrics()
@@ -84,15 +124,26 @@ def main():
         # Display metrics with proper formatting based on value type
         cols = st.columns(len(metrics))
         for i, (metric, value) in enumerate(metrics.items()):
+            formatted_value = str(value) if isinstance(value, str) else f"{value:.2f}" if isinstance(value, float) else str(value)
+            # Make metric names more user-friendly
+            friendly_name = metric.replace('_', ' ').title()
+            if metric == 'quantum_enabled':
+                friendly_name = 'Quantum Mode'
+                formatted_value = 'Enabled' if value > 0 else 'Disabled'
+            elif metric == 'quantum_backend':
+                friendly_name = 'Processing On'
+                formatted_value = value.title()
+
             cols[i].metric(
-                label=metric.replace('_', ' ').title(),
-                value=str(value) if isinstance(value, str) else f"{value:.2f}" if isinstance(value, float) else str(value)
+                label=friendly_name,
+                value=formatted_value
             )
 
-        st.subheader("Memory State")
+        # Recent Activity
+        st.subheader("Recent Activity")
         history = st.session_state.memory.get_history()
-        for message in history:
-            with st.expander(f"{message['role']} - {message['timestamp']}"):
+        for message in history[-5:]:  # Show only last 5 activities
+            with st.expander(f"{message['role'].title()} - {message['timestamp']}"):
                 st.write(message['content'])
 
     # Additional Information
