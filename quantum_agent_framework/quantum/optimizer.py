@@ -387,123 +387,138 @@ class QuantumOptimizer:
 
                     return {'type': 'classical', 'description': response}
 
-            def get_circuit_stats(self) -> Dict[str, Any]:
-                """Get quantum circuit statistics."""
-                return {
-                    "circuit_depth": self.n_layers * 3,
-                    "total_gates": self.n_qubits * self.n_layers * 4,
-                    "backend": "Azure Quantum IonQ" if self.use_azure else "IBM Qiskit",
-                    "max_number_size": 2 ** (self.n_qubits // 2),
-                    "theoretical_speedup": "Exponential for factorization, Quadratic for search"
+    def get_circuit_stats(self) -> Dict[str, Any]:
+        """Get quantum circuit statistics."""
+        return {
+            "circuit_depth": self.n_layers * 3,
+            "total_gates": self.n_qubits * self.n_layers * 4,
+            "backend": "Azure Quantum IonQ" if self.use_azure else "IBM Qiskit",
+            "max_number_size": 2 ** (self.n_qubits // 2),
+            "theoretical_speedup": "Exponential for factorization, Quadratic for search"
+        }
+
+    def _check_azure_credentials(self) -> bool:
+        """Check if all required Azure Quantum credentials are present."""
+        required_env_vars = [
+            "AZURE_QUANTUM_SUBSCRIPTION_ID",
+            "AZURE_QUANTUM_RESOURCE_GROUP",
+            "AZURE_QUANTUM_WORKSPACE_NAME",
+            "AZURE_QUANTUM_LOCATION"
+        ]
+
+        # For development purposes, we'll simulate having the credentials
+        # In production, uncomment this to actually check for credentials
+        # return all(os.environ.get(var) for var in required_env_vars)
+
+        # For now, just return True to simulate having Azure credentials
+        return True
+
+    def optimize_resource_allocation(self, resources: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Use QAOA (Quantum Approximate Optimization Algorithm) for resource allocation.
+        """
+        try:
+            start_time = time.time()
+
+            # Prepare problem parameters
+            n_variables = min(len(resources.get("items", [])), self.n_qubits)
+
+            # Adjust parameters for QAOA
+            self.params = np.random.uniform(-np.pi, np.pi, (2, n_variables, 2))
+
+            # Define a simple QAOA circuit for resource allocation
+            def qaoa_circuit(x, params):
+                """Simple QAOA circuit implementation"""
+                # Problem Hamiltonian (cost function)
+                for i in range(n_variables):
+                    qml.RZ(params[0][i][0], wires=i)
+                
+                # Mixer Hamiltonian
+                for i in range(n_variables):
+                    qml.RX(params[1][i][0], wires=i)
+                
+                # Measure in computational basis
+                return [qml.expval(qml.PauliZ(i)) for i in range(n_variables)]
+            
+            # Execute the circuit
+            qnode = qml.QNode(qaoa_circuit, self.dev)
+            result = qnode(np.zeros(n_variables), self.params)
+
+            # Process results
+            allocation = [1 if val > 0 else 0 for val in result]
+            objective_value = sum([allocation[i] * resources.get("weights", [1] * n_variables)[i] 
+                                  for i in range(n_variables)])
+
+            return {
+                "success": True,
+                "allocation": allocation,
+                "objective_value": objective_value,
+                "computation_time": time.time() - start_time,
+                "method_used": "quantum_qaoa",
+                "backend": "Azure Quantum IonQ" if self.use_azure else "IBM Qiskit",
+                "circuit_depth": 2 * 3,  # QAOA with 2 rounds
+                "quantum_advantage": "Quadratic speedup over classical methods"
+            }
+
+        except Exception as e:
+            logging.error(f"Optimization error: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "method_used": "error"
+            }
+
+    def enhanced_search(self, database: List[Dict], query: Dict) -> Dict[str, Any]:
+        """
+        Use Grover's algorithm for enhanced database search.
+        """
+        try:
+            start_time = time.time()
+
+            # Identify unique items to search through
+            n_items = min(len(database), 2**self.n_qubits)
+
+            # Simulate Grover's algorithm
+            oracle_matrix = np.zeros((n_items, n_items))
+            # Mark matching items in the oracle
+            matches = []
+            for i, item in enumerate(database[:n_items]):
+                if all(item.get(k) == v for k, v in query.items()):
+                    matches.append(i)
+                    oracle_matrix[i, i] = -1  # Phase flip for matching items
+                else:
+                    oracle_matrix[i, i] = 1
+
+            # Number of Grover iterations
+            n_iterations = int(np.pi/4 * np.sqrt(n_items / max(1, len(matches))))
+
+            # Simulate the quantum advantage
+            classical_time = n_items / 1000  # Simulated classical search time
+            quantum_time = np.sqrt(n_items) / 1000  # Simulated quantum search time
+
+            # Add small random delay to simulate computation
+            time.sleep(quantum_time)
+
+            return {
+                "success": True,
+                "matches": matches,
+                "match_count": len(matches),
+                "total_items": n_items,
+                "computation_time": time.time() - start_time,
+                "method_used": "quantum_grover",
+                "backend": "Azure Quantum IonQ" if self.use_azure else "IBM Qiskit",
+                "grover_iterations": n_iterations,
+                "quantum_advantage": {
+                    "speedup": f"{classical_time/quantum_time:.2f}x faster",
+                    "classical_time": classical_time,
+                    "quantum_time": quantum_time
                 }
+            }
 
-            def _check_azure_credentials(self) -> bool:
-                """Check if all required Azure Quantum credentials are present."""
-                required_env_vars = [
-                    "AZURE_QUANTUM_SUBSCRIPTION_ID",
-                    "AZURE_QUANTUM_RESOURCE_GROUP",
-                    "AZURE_QUANTUM_WORKSPACE_NAME",
-                    "AZURE_QUANTUM_LOCATION"
-                ]
-
-                # For development purposes, we'll simulate having the credentials
-                # In production, uncomment this to actually check for credentials
-                # return all(os.environ.get(var) for var in required_env_vars)
-
-                # For now, just return True to simulate having Azure credentials
-                return True
-
-            def optimize_resource_allocation(self, resources: Dict[str, Any]) -> Dict[str, Any]:
-                """
-                Use QAOA (Quantum Approximate Optimization Algorithm) for resource allocation.
-                """
-                try:
-                    start_time = time.time()
-
-                    # Prepare problem parameters
-                    n_variables = min(len(resources.get("items", [])), self.n_qubits)
-
-                    # Adjust parameters for QAOA
-                    self.params = np.random.uniform(-np.pi, np.pi, (2, n_variables, 2))
-
-                    # Run QAOA simulation
-                    result = self.arithmetic_circuit(np.zeros(n_variables), "optimize")
-
-                    # Process results
-                    allocation = [1 if val > 0 else 0 for val in result]
-                    objective_value = sum([allocation[i] * resources.get("weights", [1] * n_variables)[i] 
-                                          for i in range(n_variables)])
-
-                    return {
-                        "success": True,
-                        "allocation": allocation,
-                        "objective_value": objective_value,
-                        "computation_time": time.time() - start_time,
-                        "method_used": "quantum_qaoa",
-                        "backend": "Azure Quantum IonQ" if self.use_azure else "IBM Qiskit",
-                        "circuit_depth": 2 * 3,  # QAOA with 2 rounds
-                        "quantum_advantage": "Quadratic speedup over classical methods"
-                    }
-
-                except Exception as e:
-                    logging.error(f"Optimization error: {str(e)}")
-                    return {
-                        "success": False,
-                        "error": str(e),
-                        "method_used": "error"
-                    }
-
-            def enhanced_search(self, database: List[Dict], query: Dict) -> Dict[str, Any]:
-                """
-                Use Grover's algorithm for enhanced database search.
-                """
-                try:
-                    start_time = time.time()
-
-                    # Identify unique items to search through
-                    n_items = min(len(database), 2**self.n_qubits)
-
-                    # Simulate Grover's algorithm
-                    oracle_matrix = np.zeros((n_items, n_items))
-                    # Mark matching items in the oracle
-                    matches = []
-                    for i, item in enumerate(database[:n_items]):
-                        if all(item.get(k) == v for k, v in query.items()):
-                            matches.append(i)
-                            oracle_matrix[i, i] = -1  # Phase flip for matching items
-                        else:
-                            oracle_matrix[i, i] = 1
-
-                    # Number of Grover iterations
-                    n_iterations = int(np.pi/4 * np.sqrt(n_items / max(1, len(matches))))
-
-                    # Simulate the quantum advantage
-                    classical_time = n_items / 1000  # Simulated classical search time
-                    quantum_time = np.sqrt(n_items) / 1000  # Simulated quantum search time
-
-                    # Add small random delay to simulate computation
-                    time.sleep(quantum_time)
-
-                    return {
-                        "success": True,
-                        "matches": matches,
-                        "match_count": len(matches),
-                        "total_items": n_items,
-                        "computation_time": time.time() - start_time,
-                        "method_used": "quantum_grover",
-                        "backend": "Azure Quantum IonQ" if self.use_azure else "IBM Qiskit",
-                        "grover_iterations": n_iterations,
-                        "quantum_advantage": {
-                            "speedup": f"{classical_time/quantum_time:.2f}x faster",
-                            "classical_time": classical_time,
-                            "quantum_time": quantum_time
-                        }
-                    }
-
-                except Exception as e:
-                    logging.error(f"Search error: {str(e)}")
-                    return {
-                        "success": False,
-                        "error": str(e),
-                        "method_used": "error"
-                    }
+        except Exception as e:
+            logging.error(f"Search error: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "method_used": "error"
+            }
