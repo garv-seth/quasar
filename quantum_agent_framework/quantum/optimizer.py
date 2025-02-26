@@ -9,6 +9,7 @@ import time
 from openai import AsyncOpenAI
 import re
 import random
+import json
 
 class QuantumOptimizer:
     """Manages quantum circuit optimization for enhanced mathematical computations."""

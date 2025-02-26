@@ -2,14 +2,14 @@
 
 import numpy as np
 import logging
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from dataclasses import dataclass
 import time
 from openai import AsyncOpenAI
 import random
 import asyncio
 import os
-import numpy as np
+from anthropic import AsyncAnthropic
 
 
 @dataclass
@@ -252,3 +252,106 @@ class FactorizationManager:
 
         generate_factors(0, 1)
         return sorted(list(all_factors))
+        
+    async def get_advanced_factorization_explanation(self, number: int, factors: List[int], 
+                                                  method_used: str) -> str:
+        """
+        Get an advanced explanation of the factorization process using Claude 3.7 Sonnet.
+        This method provides a detailed explanation of how the factorization was performed,
+        including mathematical insights and quantum computing concepts when appropriate.
+        
+        Args:
+            number: The number that was factorized
+            factors: The complete list of factors
+            method_used: The method used ("classical", "quantum", "quantum_hybrid", etc.)
+            
+        Returns:
+            A detailed explanation of the factorization
+        """
+        try:
+            # Check if we have the Anthropic API key
+            if not os.environ.get("ANTHROPIC_API_KEY"):
+                logging.warning("Anthropic API key not available, using basic explanation")
+                return self._get_basic_explanation(number, factors, method_used)
+                
+            # Create a prompt for Claude with mathematical context
+            prime_factors = []
+            for i in range(2, int(number**0.5) + 1):
+                while number % i == 0:
+                    prime_factors.append(i)
+                    number //= i
+            if number > 1:
+                prime_factors.append(number)
+                
+            quantum_context = ""
+            if "quantum" in method_used:
+                quantum_context = """
+                Also explain how quantum computing aids in factorization through Shor's algorithm,
+                providing a mathematical overview of period finding and the quantum advantage for factorization.
+                Explain the exponential speedup Shor's algorithm provides over classical factorization methods.
+                
+                Include a brief explanation of how the Quantum Fourier Transform is utilized in Shor's algorithm
+                and why this is a key quantum subroutine that enables the exponential speedup.
+                """
+            
+            prompt = f"""
+            I need a detailed mathematical explanation of the factorization of {number}.
+            
+            The complete list of factors is: {factors}
+            
+            Please provide:
+            1. The prime factorization of the number
+            2. The mathematical process to derive all factors from the prime factorization
+            3. A brief explanation of the number-theoretic properties of this particular number
+            {quantum_context}
+            
+            Format the response as a clear, educational explanation suitable for teaching purposes.
+            Include relevant mathematical notation where appropriate.
+            """
+            
+            # Get response from Claude
+            response = await self.anthropic_client.messages.create(
+                model="claude-3-sonnet-20240229",
+                max_tokens=2048,
+                temperature=0.2,
+                system="You are a mathematics professor specializing in number theory and quantum computing. \
+                        Provide clear, accurate, and educational explanations of mathematical concepts.",
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            
+            return response.content[0].text
+            
+        except Exception as e:
+            logging.error(f"Error getting advanced explanation: {str(e)}")
+            return self._get_basic_explanation(number, factors, method_used)
+    
+    def _get_basic_explanation(self, number: int, factors: List[int], method_used: str) -> str:
+        """Provide a basic explanation as fallback when Claude is unavailable."""
+        prime_factors = []
+        n = number
+        for i in range(2, int(n**0.5) + 1):
+            while n % i == 0:
+                prime_factors.append(i)
+                n //= i
+        if n > 1:
+            prime_factors.append(n)
+            
+        explanation = f"""
+        Factorization of {number}:
+        
+        Prime factorization: {number} = {' × '.join(map(str, prime_factors))}
+        
+        Complete list of factors: {', '.join(map(str, factors))}
+        """
+        
+        if "quantum" in method_used:
+            explanation += f"""
+            
+            This factorization was performed using quantum computing techniques inspired by Shor's algorithm.
+            Shor's algorithm provides an exponential speedup over classical factorization methods
+            by using quantum principles to find the period of a function efficiently.
+            """
+            
+        return explanation

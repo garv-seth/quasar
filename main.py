@@ -526,13 +526,23 @@ def display_factorization_page():
     # Input section
     st.markdown("### Enter a Number to Factorize")
 
-    number = st.number_input(
+    # Using text input instead of number_input to handle very large numbers
+    # This works around Streamlit's JavaScript number limitation (max safe integer is 2^53-1)
+    number_str = st.text_input(
         "Number to factorize",
-        min_value=2,
-        max_value=10**100,  # Effectively unlimited - theoretical limit of Shor's algorithm
-        value=3960,
+        value="3960",
         help="Enter a positive integer to factorize. Larger numbers (> 10,000) will use quantum methods and demonstrate exponential speedup."
     )
+    
+    # Convert to integer with validation
+    try:
+        number = int(number_str)
+        if number < 2:
+            st.warning("Please enter a number greater than or equal to 2")
+            number = 2
+    except ValueError:
+        st.warning("Please enter a valid integer")
+        number = 3960
 
     process_button = st.button("🚀 Factorize Number", use_container_width=True)
 
@@ -557,6 +567,40 @@ def display_factorization_page():
                 if result and 'error' not in result:
                     # Display results
                     display_quantum_metrics(result)
+                    
+                    # Get advanced explanation from Claude if available
+                    try:
+                        # Access the factorization manager
+                        from quantum_agent_framework.quantum.factorization_manager import FactorizationManager
+                        from quantum_agent_framework.quantum.optimizer import QuantumOptimizer
+                        
+                        # Create optimizer and manager if not already in session state
+                        if 'factorization_manager' not in st.session_state:
+                            optimizer = QuantumOptimizer(
+                                n_qubits=st.session_state.n_qubits,
+                                use_azure=st.session_state.use_azure
+                            )
+                            st.session_state.factorization_manager = FactorizationManager(
+                                quantum_optimizer=optimizer
+                            )
+                        
+                        # Get the explanation
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        advanced_explanation = loop.run_until_complete(
+                            st.session_state.factorization_manager.get_advanced_factorization_explanation(
+                                number,
+                                result.get('factors', []),
+                                result.get('method_used', 'unknown')
+                            )
+                        )
+                        
+                        # Display the explanation in an expander
+                        with st.expander("🔍 Advanced Mathematical Explanation (Powered by Claude 3.7 Sonnet)", expanded=True):
+                            st.markdown(advanced_explanation)
+                            
+                    except Exception as e:
+                        logger.error(f"Error getting advanced explanation: {str(e)}")
 
                     # Save to database
                     try:
