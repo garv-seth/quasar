@@ -8,9 +8,21 @@ import json
 import logging
 import time
 import os
+import sys
 from datetime import datetime
 import random
 import asyncio
+
+# Setup proper logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger("quasar-agent")
+logger.info("Starting Q3A: Quantum-Accelerated AI Agent...")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

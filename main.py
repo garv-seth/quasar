@@ -3,5 +3,5 @@
 import sys
 import os
 
-# Run the simplified agent interface
-import simplified_agent
+# Run the basic app interface
+import basic_app
