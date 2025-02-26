@@ -67,13 +67,13 @@ class QuantumFactorizer:
         return [qml.probs(wires=i) for i in range(self.n_qubits // 2)]
 
     @qml.qnode(qml.device("default.qubit", wires=1))
-    def _demo_circuit(self, n: int):
+    def _demo_circuit(self):
         """
         Simple demo circuit for visualization purposes.
         """
         # Apply some gates to create an interesting circuit
-        qml.RX(n % 10 * np.pi / 5, wires=0)
-        qml.RY(n % 7 * np.pi / 3, wires=0)
+        qml.RX(np.pi / 4, wires=0)
+        qml.RY(np.pi / 3, wires=0)
         return qml.state()
         
     def factorize(self, number: int) -> Dict[str, Any]:
@@ -132,7 +132,7 @@ class QuantumFactorizer:
             quantum_time = time.time() - quantum_start
         
         # Generate circuit diagram for visualization
-        circuit_diagram = qml.draw(self._demo_circuit)(number)
+        circuit_diagram = qml.draw(self._demo_circuit)()
         
         # Total processing time
         total_time = time.time() - start_time

@@ -1,16 +1,21 @@
-"""Main entry point for the Q3A: Quantum-Accelerated Search and AI Reasoning."""
+"""Main entry point for the Q3A: Quantum-Accelerated AI Agent."""
 
+import os
+import asyncio
 import streamlit as st
 import numpy as np
+import pandas as pd
 import time
 import random
 import math
+import json
 from datetime import datetime
+from ai_agent import Q3AAgent
 
 # Page configuration
 st.set_page_config(
-    page_title="QUASAR Framework",
-    page_icon="🔬",
+    page_title="QUASAR: Quantum AI Agent",
+    page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -59,24 +64,75 @@ st.markdown("""
         font-size: 0.8em;
         margin-right: 0.5em;
     }
+    .agent-message {
+        background-color: #f0f7ff;
+        border-left: 3px solid #29539B;
+        padding: 1em;
+        margin: 0.5em 0;
+        border-radius: 0 10px 10px 0;
+    }
+    .user-message {
+        background-color: #f2f2f2;
+        border-right: 3px solid #718096;
+        padding: 1em;
+        margin: 0.5em 0;
+        border-radius: 10px 0 0 10px;
+        text-align: right;
+    }
+    .task-result {
+        background-color: #f0f8f7;
+        border: 1px solid #ddd;
+        padding: 1em;
+        margin: 0.5em 0;
+        border-radius: 10px;
+    }
+    .center {
+        display: flex;
+        justify-content: center;
+    }
 </style>
 """, unsafe_allow_html=True)
+
+# Initialize session state for the agent and conversation history
+if 'agent' not in st.session_state:
+    # Default to quantum enabled but check OpenAI API key
+    use_openai = os.environ.get("OPENAI_API_KEY") is not None
+    st.session_state.agent = Q3AAgent(use_quantum=True, n_qubits=8, use_openai=use_openai)
+    st.session_state.show_debug = False
+    st.session_state.tasks = []
+    st.session_state.messages = []
+    st.session_state.current_tab = "chat"
 
 # Sidebar
 with st.sidebar:
     st.title("QUASAR Framework")
-    st.image("https://upload.wikimedia.org/wikipedia/commons/1/1e/Quantum-computer.jpg", width=250)
+    st.image("https://upload.wikimedia.org/wikipedia/commons/9/96/Quantum_circuit_compilation_for_nisq_gqo.png", width=250)
     
-    st.markdown("### Settings")
+    st.markdown("### Agent Settings")
     
     # Quantum settings
-    use_quantum = st.checkbox("Use Quantum Acceleration", value=True)
-    n_qubits = st.slider("Number of Qubits", min_value=4, max_value=29, value=8)
+    use_quantum = st.checkbox("Use Quantum Acceleration", value=True, key="use_quantum")
+    n_qubits = st.slider("Number of Qubits", min_value=4, max_value=29, value=8, key="n_qubits")
+    
+    # Update agent if settings changed
+    if use_quantum != st.session_state.agent.use_quantum or n_qubits != st.session_state.agent.n_qubits:
+        st.session_state.agent.use_quantum = use_quantum
+        st.session_state.agent.n_qubits = n_qubits
+    
+    st.markdown("### Advanced Settings")
+    show_debug = st.checkbox("Show Debug Information", value=st.session_state.show_debug)
+    st.session_state.show_debug = show_debug
+    
+    st.markdown("---")
+    st.markdown("### Navigation")
+    tab_options = ["Chat", "Tasks", "Performance"]
+    selected_tab = st.radio("Select Interface", tab_options)
+    st.session_state.current_tab = selected_tab.lower()
     
     st.markdown("---")
     st.markdown("### About")
     st.markdown("""
-    **QUASAR Framework**  
+    **QUASAR: Quantum AI Agent Framework**  
     Quantum-Accelerated Search and AI Reasoning
     
     Version: 1.0.0  
@@ -84,359 +140,254 @@ with st.sidebar:
     """)
 
 # Main header
-st.markdown('<div class="main-header">QUASAR: Quantum-Accelerated Search and AI Reasoning</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header">Q3A: Quantum-Accelerated AI Agent</div>', unsafe_allow_html=True)
 
-st.markdown("""
-QUASAR is a cutting-edge framework that leverages quantum computing to accelerate various AI tasks.
-The framework combines classical algorithms with quantum subroutines for optimal performance.
-""")
+# Content based on selected tab
+if st.session_state.current_tab == "chat":
+    st.subheader("Agent Chat Interface")
+    
+    st.markdown("""
+    Interact with the Q3A agent to perform tasks with quantum acceleration.
+    The agent can handle various tasks including:
+    
+    - **Enhanced Search**: Grover's algorithm provides quadratic speedup
+    - **Factorization**: Shor's algorithm can factor large numbers efficiently
+    - **Optimization**: QAOA provides advantages for constraint optimization problems
+    """)
+    
+    # Display conversation history
+    for message in st.session_state.messages:
+        if message["role"] == "user":
+            st.markdown(f"<div class='user-message'>{message['content']}</div>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<div class='agent-message'>{message['content']}</div>", unsafe_allow_html=True)
+    
+    # Chat input
+    with st.form(key="chat_form"):
+        user_input = st.text_area("Enter your task or question:", height=100)
+        cols = st.columns([1, 1, 4])
+        with cols[0]:
+            submit_button = st.form_submit_button("Send")
+        with cols[1]:
+            clear_button = st.form_submit_button("Clear Chat")
+    
+    # Form processing
+    if clear_button:
+        st.session_state.messages = []
+        st.rerun()
+        
+    if submit_button and user_input:
+        # Add user message to history
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        
+        # Create a placeholder for the agent's response
+        with st.spinner("Processing with Q3A Agent..."):
+            # Process the task
+            task_result = asyncio.run(st.session_state.agent.process_task(user_input))
+            st.session_state.tasks.append(task_result)
+            
+            # Generate a user-friendly response based on task type
+            if task_result["task_type"] == "search":
+                response = f"### Search Results for: {task_result['result']['query']}\n\n"
+                response += f"{task_result['result']['summary']}\n\n"
+                
+                for i, result in enumerate(task_result['result']['results'][:3]):
+                    response += f"**Result {i+1}**: {result['title']}\n"
+                    response += f"{result['content']}\n"
+                    response += f"*Relevance: {result['relevance']:.1f}% - {result['processing']}*\n\n"
+                    
+                # Add performance metrics
+                if st.session_state.show_debug:
+                    response += "\n\n---\n\n"
+                    response += f"**Processing Method**: {'Quantum-Accelerated' if task_result['use_quantum'] else 'Classical'}\n"
+                    response += f"**Quantum Time**: {task_result['result']['quantum_time']:.4f}s\n"
+                    response += f"**Classical Time**: {task_result['result']['classical_time']:.4f}s\n"
+                    if task_result['use_quantum']:
+                        response += f"**Speedup**: {task_result['result']['speedup']:.2f}x\n"
+                    
+            elif task_result["task_type"] == "factorization":
+                response = f"### Factorization of {task_result['result']['number']}\n\n"
+                response += f"{task_result['result']['explanation']}\n\n"
+                
+                # Add performance metrics
+                if st.session_state.show_debug:
+                    response += "\n\n---\n\n"
+                    response += f"**Processing Method**: {'Quantum-Accelerated' if task_result['use_quantum'] else 'Classical'}\n"
+                    response += f"**Quantum Time**: {task_result['result']['quantum_time']:.4f}s\n"
+                    response += f"**Classical Time**: {task_result['result']['classical_time']:.4f}s\n"
+                    if task_result['use_quantum']:
+                        response += f"**Speedup**: {task_result['result']['speedup']:.2f}x\n"
+                    
+            elif task_result["task_type"] == "optimization":
+                response = f"### Optimization Results\n\n"
+                response += f"{task_result['result']['explanation']}\n\n"
+                
+                response += "**Solution:**\n"
+                for key, value in task_result['result']['solution'].items():
+                    response += f"- {key}: {value}\n"
+                    
+                response += f"\n**Objective Value**: {task_result['result']['objective_value']}\n"
+                
+                # Add performance metrics
+                if st.session_state.show_debug:
+                    response += "\n\n---\n\n"
+                    response += f"**Processing Method**: {'Quantum-Accelerated' if task_result['use_quantum'] else 'Classical'}\n"
+                    response += f"**Quantum Time**: {task_result['result']['quantum_time']:.4f}s\n"
+                    response += f"**Classical Time**: {task_result['result']['classical_time']:.4f}s\n"
+                    if task_result['use_quantum']:
+                        response += f"**Speedup**: {task_result['result']['speedup']:.2f}x\n"
+                    
+            else:  # General task
+                response = task_result['result']['response']
+                
+                # Add performance metrics
+                if st.session_state.show_debug:
+                    response += "\n\n---\n\n"
+                    response += f"**Processing Method**: {'Quantum-Accelerated' if task_result['use_quantum'] else 'Classical'}\n"
+                    response += f"**Quantum Time**: {task_result['result']['quantum_time']:.4f}s\n"
+                    response += f"**Classical Time**: {task_result['result']['classical_time']:.4f}s\n"
+                    if task_result['use_quantum']:
+                        response += f"**Speedup**: {task_result['result']['speedup']:.2f}x\n"
+            
+            # Add agent response to history
+            st.session_state.messages.append({"role": "assistant", "content": response})
+        
+        # Rerun to update the UI
+        st.rerun()
 
-# Main content - Tabs
-tab1, tab2, tab3, tab4 = st.tabs(["Search", "Factorization", "Optimization", "Agent Dashboard"])
+elif st.session_state.current_tab == "tasks":
+    st.subheader("Tasks History & Management")
+    
+    # Simple task history display
+    if not st.session_state.tasks:
+        st.info("No tasks have been processed yet. Try asking the agent to perform a task in the Chat tab.")
+    else:
+        st.write(f"Total tasks processed: {len(st.session_state.tasks)}")
+        
+        # Group by task type
+        task_types = {}
+        for task in st.session_state.tasks:
+            task_type = task["task_type"]
+            if task_type not in task_types:
+                task_types[task_type] = []
+            task_types[task_type].append(task)
+        
+        # Display by type
+        for task_type, tasks in task_types.items():
+            with st.expander(f"{task_type.capitalize()} Tasks ({len(tasks)})", expanded=True):
+                for i, task in enumerate(tasks):
+                    with st.expander(f"Task {i+1}: {task['task'][:50]}...", expanded=False):
+                        st.write(f"**ID**: {task['task_id']}")
+                        st.write(f"**Type**: {task['task_type']}")
+                        st.write(f"**Time**: {task['execution_time']:.4f}s")
+                        st.write(f"**Quantum**: {'Yes' if task['use_quantum'] else 'No'}")
+                        
+                        # Task result display
+                        with st.expander("View Result", expanded=False):
+                            result = task["result"]
+                            # Format differently based on task type
+                            if task["task_type"] == "search":
+                                st.write(f"**Query**: {result['query']}")
+                                st.write(f"**Summary**: {result['summary']}")
+                                for i, r in enumerate(result['results'][:3]):
+                                    st.write(f"**Result {i+1}**: {r['title']}")
+                            elif task["task_type"] == "factorization":
+                                st.write(f"**Number**: {result['number']}")
+                                st.write(f"**Factors**: {', '.join(map(str, result['factors']))}")
+                                st.write(f"**Prime Factors**: {', '.join(map(str, result['prime_factors']))}")
+                            elif task["task_type"] == "optimization":
+                                st.write(f"**Objective Value**: {result['objective_value']}")
+                                st.write("**Solution**:")
+                                for k, v in result['solution'].items():
+                                    st.write(f"- {k}: {v}")
+                            else:
+                                st.write(result['response'])
+                                
+                        # Performance metrics
+                        with st.expander("Performance Metrics", expanded=False):
+                            cols = st.columns(3)
+                            with cols[0]:
+                                st.metric("Quantum Time", f"{task['result']['quantum_time']:.4f}s")
+                            with cols[1]:
+                                st.metric("Classical Time", f"{task['result']['classical_time']:.4f}s")
+                            with cols[2]:
+                                if task['use_quantum']:
+                                    speedup = task['result'].get('speedup', 0)
+                                    st.metric("Speedup", f"{speedup:.2f}x")
+                                else:
+                                    st.metric("Speedup", "N/A")
 
-# Import our quantum module
-from quantum_module import QuantumSearcher
-
-# Search tab
-with tab1:
-    st.header("Quantum-Enhanced Search")
+elif st.session_state.current_tab == "performance":
+    st.subheader("Quantum-Classical Performance Comparison")
     
-    search_query = st.text_input("Enter your search query:")
-    search_urls_input = st.text_area("Optional: Enter URLs to search (one per line):", height=100)
+    # Get agent metrics
+    metrics = st.session_state.agent.get_metrics()
     
-    # Process URLs if provided
-    search_urls = None
-    if search_urls_input.strip():
-        search_urls = [url.strip() for url in search_urls_input.split('\n') if url.strip()]
+    # Overall metrics
+    st.markdown("### Overall Performance")
     
-    col1, col2 = st.columns(2)
+    cols = st.columns(3)
+    with cols[0]:
+        st.metric("Tasks Completed", metrics["tasks_completed"])
+    with cols[1]:
+        st.metric("Quantum Tasks", metrics["quantum_accelerated_tasks"])
+    with cols[2]:
+        st.metric("Classical Tasks", metrics["classical_tasks"])
     
-    with col1:
-        if st.button("Search", key="search_button"):
-            if not search_query:
-                st.warning("Please enter a search query.")
-            else:
-                with st.spinner("Performing quantum search..."):
-                    # Initialize progress bar
-                    progress_bar = st.progress(0)
-                    
-                    # Create quantum searcher with the selected number of qubits
-                    searcher = QuantumSearcher(n_qubits=n_qubits)
-                    
-                    # Process in chunks to update progress bar
-                    for i in range(100):
-                        time.sleep(0.01)  # Small delay for progress visualization
-                        progress_bar.progress(i + 1)
-                        if i == 50:  # At halfway point, do the actual search
-                            # Perform search with real quantum circuit simulation
-                            result = searcher.search(search_query, search_urls)
-                    
-                    st.success("Search completed!")
-                    
-                    # Display actual results
-                    st.markdown("### Search Results")
-                    
-                    for i, r in enumerate(result['results']):
-                        with st.expander(f"Result {i+1}: {r['processing']} Match"):
-                            st.write(f"Relevance Score: {r['relevance']:.2f}%")
-                            st.write(f"Process Method: {r['processing']}")
-                            st.write(f"Sample Content: {r['snippet']}")
-                            if 'url' in r:
-                                st.write(f"URL: {r['url']}")
-                    
-                    # Performance information
-                    st.markdown("### Search Performance")
-                    metrics_cols = st.columns(3)
-                    
-                    with metrics_cols[0]:
-                        st.metric("Total Time", f"{result['total_time']:.2f}s")
-                    
-                    with metrics_cols[1]:
-                        if result['use_quantum']:
-                            st.metric("Quantum", f"{result['quantum_time']:.2f}s")
-                        else:
-                            st.metric("Quantum", "N/A")
-                    
-                    with metrics_cols[2]:
-                        st.metric("Classical", f"{result['classical_time']:.2f}s")
-    
-    with col2:
-        st.markdown("### Quantum Search Features")
+    # Speedup metrics if any quantum tasks completed
+    if metrics["quantum_accelerated_tasks"] > 0:
+        st.metric("Average Quantum Speedup", f"{metrics['average_speedup']:.2f}x")
+        
+        # Simulated quantum advantage chart
+        st.markdown("### Quantum vs. Classical Performance")
+        
+        # Create sample data for demonstration
+        task_sizes = list(range(10, 110, 10))
+        classical_times = [0.1 * x for x in task_sizes]
+        quantum_times = [0.1 * x**0.5 for x in task_sizes]  # Square root speedup
+        
+        # Create a chart comparing quantum vs. classical
+        chart_data = {"Task Size": task_sizes}
+        chart_data["Classical Time (s)"] = classical_times
+        chart_data["Quantum Time (s)"] = quantum_times
+        
+        chart_df = pd.DataFrame(chart_data)
+        st.line_chart(chart_df.set_index("Task Size"))
+        
         st.markdown("""
-        - **Quantum amplitude amplification**: Leverages quantum superposition to amplify correct search results
-        - **Grover's algorithm**: Provides quadratic speedup over classical search algorithms
-        - **Hybrid quantum-classical indexing**: Combines classical indexing with quantum search for optimal performance
-        - **Entanglement-based relevance**: Uses quantum entanglement to measure content relevance
+        *Note: This chart illustrates the theoretical advantage of quantum computing 
+        for certain classes of problems. Real-world performance may vary based on 
+        specific problem characteristics and available quantum hardware.*
         """)
         
-        # Quantum circuit visualization
-        st.markdown("### Quantum Circuit Visualization")
+        # Application domains
+        st.markdown("### Quantum Advantage by Application Domain")
         
-        # Simplified Grover's circuit visualization
-        circuit_fig = np.zeros((n_qubits, 10))
-        
-        # Initialize qubits (Hadamard gates)
-        circuit_fig[:, 0] = 0.5
-        
-        # Oracle operation
-        circuit_fig[:, 2] = np.sin(np.linspace(0, np.pi, n_qubits)) * 0.5 + 0.5
-        
-        # Diffusion operator
-        circuit_fig[:, 4] = np.cos(np.linspace(0, np.pi, n_qubits)) * 0.5 + 0.5
-        
-        # Second oracle
-        circuit_fig[:, 6] = np.sin(np.linspace(np.pi, 2*np.pi, n_qubits)) * 0.5 + 0.5
-        
-        # Second diffusion
-        circuit_fig[:, 8] = np.cos(np.linspace(np.pi, 2*np.pi, n_qubits)) * 0.5 + 0.5
-        
-        st.line_chart(circuit_fig)
-
-# Import our quantum module
-from quantum_module import QuantumFactorizer
-
-# Factorization tab
-with tab2:
-    st.header("Quantum Factorization")
-    
-    number_to_factorize = st.number_input("Enter a number to factorize:", min_value=2, value=1997)
-    
-    if st.button("Factorize", key="factorize_button"):
-        with st.spinner("Running quantum factorization algorithm..."):
-            # Initialize progress bar
-            progress_bar = st.progress(0)
-            
-            # Create quantum factorizer with the selected number of qubits
-            factorizer = QuantumFactorizer(n_qubits=n_qubits)
-            
-            # Process in chunks to update progress bar
-            for i in range(100):
-                time.sleep(0.01)  # Small delay for progress visualization
-                progress_bar.progress(i + 1)
-                if i == 50:  # At halfway point, do the actual factorization
-                    # Perform factorization with real quantum circuit simulation
-                    result = factorizer.factorize(number_to_factorize)
-            
-            st.success(f"Factorization completed!")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("### Results")
-                st.markdown(f"**Number factorized:** {result['number']}")
-                st.markdown(f"**Prime factors:** {', '.join(map(str, result['prime_factors']))}")
-                st.markdown(f"**All factors:** {', '.join(map(str, result['factors']))}")
-                
-                # Display quantum circuit diagram
-                st.markdown("### Quantum Circuit")
-                st.text(result['circuit_diagram'])
-            
-            with col2:
-                st.markdown("### Performance Metrics")
-                
-                quantum_time = result['quantum_time']
-                classical_time = result['classical_time']
-                
-                st.markdown(f"<span class='quantum-badge'>Quantum</span> Processing time: {quantum_time:.4f} s", unsafe_allow_html=True)
-                st.markdown(f"<span class='classical-badge'>Classical</span> Processing time: {classical_time:.4f} s", unsafe_allow_html=True)
-                
-                if result['use_quantum']:
-                    speedup = result['speedup']
-                    st.markdown(f"**Speedup factor:** {speedup:.2f}x")
-                else:
-                    st.markdown("**Note:** Classical algorithm used for this size (quantum advantage appears for larger numbers)")
-                
-                st.markdown(f"**Qubits utilized:** {result['qubits_used']}")
-                st.markdown(f"**Circuit depth:** {result['quantum_circuit_depth']}")
-                
-                # Display a comparison chart
-                chart_data = np.array([[quantum_time], [classical_time]])
-                st.bar_chart(chart_data)
-
-# Import our quantum module
-from quantum_module import QuantumOptimizer
-
-# Optimization tab
-with tab3:
-    st.header("Quantum Optimization")
-    
-    st.markdown("""
-    Quantum optimization leverages quantum mechanics to find optimal solutions for complex problems.
-    Algorithms like QAOA (Quantum Approximate Optimization Algorithm) can provide significant
-    advantages for certain types of optimization challenges.
-    """)
-    
-    optimization_type = st.selectbox(
-        "Select optimization problem type:",
-        ["Resource Allocation", "Portfolio Optimization", "Logistics Routing", "Computational Chemistry"]
-    )
-    
-    problem_size = st.slider("Problem complexity", min_value=2, max_value=50, value=10)
-    
-    if st.button("Optimize", key="optimize_button"):
-        with st.spinner("Running quantum optimization..."):
-            # Initialize progress bar
-            progress_bar = st.progress(0)
-            
-            # Create quantum optimizer with the selected number of qubits
-            optimizer = QuantumOptimizer(n_qubits=n_qubits)
-            
-            # Process in chunks to update progress bar
-            for i in range(100):
-                time.sleep(0.02)  # Small delay for progress visualization
-                progress_bar.progress(i + 1)
-                if i == 50:  # At halfway point, do the actual optimization
-                    # Perform optimization with real quantum circuit simulation
-                    result = optimizer.optimize(optimization_type, problem_size)
-            
-            st.success("Optimization completed!")
-            
-            # Display actual results
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("### Optimization Results")
-                
-                # Display results based on optimization type
-                if optimization_type == "Resource Allocation":
-                    st.markdown("**Resource Allocation Plan:**")
-                    resources = ["CPU", "Memory", "Storage", "Network"]
-                    # Use the objective value to generate resource allocation
-                    base_allocation = result["objective_value"] / 10
-                    allocations = [
-                        int(base_allocation * 1.2),
-                        int(base_allocation * 0.8),
-                        int(base_allocation * 1.5),
-                        int(base_allocation * 0.7)
-                    ]
-                    
-                    for r, a in zip(resources, allocations):
-                        st.markdown(f"- {r}: {a} units")
-                        
-                elif optimization_type == "Portfolio Optimization":
-                    st.markdown("**Optimal Portfolio Allocation:**")
-                    assets = ["Stocks", "Bonds", "Real Estate", "Commodities", "Crypto"]
-                    # Generate allocations that sum to 100%
-                    seed = int(result["objective_value"] * 100)
-                    random.seed(seed)
-                    raw_allocations = [random.random() for _ in range(len(assets))]
-                    total = sum(raw_allocations)
-                    allocations = [100 * a / total for a in raw_allocations]
-                    
-                    for a, p in zip(assets, allocations):
-                        st.markdown(f"- {a}: {p:.2f}%")
-                
-                else:
-                    st.markdown("**Optimization Solution:**")
-                    st.json({
-                        "objective_value": result["objective_value"],
-                        "constraints_satisfied": result["constraints_satisfied"],
-                        "total_constraints": result["total_constraints"],
-                        "iterations": result["iterations"]
-                    })
-            
-            with col2:
-                st.markdown("### Quantum Advantage")
-                
-                st.markdown(f"**Processing speedup:** {result['speedup']}x faster")
-                st.markdown(f"**Solution quality improvement:** {result['solution_improvement']}%")
-                st.markdown(f"**Qubits utilized:** {result['qubits_used']}")
-                st.markdown(f"**Quantum algorithm:** {result['algorithm']}")
-                
-                # Display convergence plot
-                st.markdown("### Convergence Plot")
-                iterations = result["convergence_data"]["iterations"]
-                classical_convergence = result["convergence_data"]["classical"]
-                quantum_convergence = result["convergence_data"]["quantum"]
-                
-                plot_data = np.column_stack((quantum_convergence, classical_convergence))
-                st.line_chart(plot_data)
-
-# Agent Dashboard
-with tab4:
-    st.header("Q3A Agent Dashboard")
-    
-    st.markdown("""
-    The Quantum-Accelerated AI Agent (Q3A) leverages quantum processing to enhance 
-    reasoning, search, and decision-making capabilities.
-    """)
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("### Agent Status")
-        
-        agent_status = {
-            "status": "Active",
-            "quantum_processor": "IonQ Aria-1 (Simulator)" if use_quantum else "Disabled",
-            "qubits_available": n_qubits,
-            "tasks_completed": random.randint(10, 50),
-            "quantum_acceleration": f"{random.uniform(1.5, 8.0):.2f}x",
-            "last_activity": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        domains = {
+            "Search": "Quadratic speedup (O(√N) vs O(N))",
+            "Factorization": "Exponential speedup (Polynomial vs Exponential)",
+            "Optimization": "Potential exponential speedup for certain problems",
+            "Machine Learning": "Potential quadratic speedup for specific algorithms",
+            "Simulation": "Exponential speedup for quantum system simulation"
         }
         
-        for key, value in agent_status.items():
-            st.markdown(f"**{key.replace('_', ' ').title()}:** {value}")
+        for domain, advantage in domains.items():
+            st.markdown(f"**{domain}**: {advantage}")
+    else:
+        st.info("Complete some tasks with quantum acceleration to see performance metrics.")
         
-        st.markdown("### Task History")
-        
-        task_types = ["Search", "Factorization", "Optimization", "Complex Reasoning"]
-        for i in range(5):
-            task_type = random.choice(task_types)
-            status = random.choice(["Completed", "Completed", "Completed", "Failed"])
-            st.markdown(f"**Task {random.randint(100, 999)}:** {task_type} - {status}")
-    
-    with col2:
-        st.markdown("### Send Instructions to Agent")
-        
-        agent_instruction = st.text_area("Enter instructions for the Q3A agent:", height=100)
-        
-        run_quantum = st.checkbox("Enable quantum acceleration for this task", value=True)
-        priority = st.slider("Task Priority", min_value=1, max_value=5, value=3)
-        
-        if st.button("Send Instructions", key="send_instructions"):
-            with st.spinner("Processing instructions..."):
-                # Simulate processing
-                time.sleep(2)
-                
-                st.success("Instructions processed and task created!")
-                
-                st.markdown("### Task Created")
-                st.json({
-                    "task_id": f"TASK-{random.randint(1000, 9999)}",
-                    "description": agent_instruction[:50] + "..." if len(agent_instruction) > 50 else agent_instruction,
-                    "status": "pending",
-                    "quantum_enabled": run_quantum,
-                    "priority": priority,
-                    "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                })
-
-# Performance Metrics section
-st.markdown("---")
-st.markdown('<div class="subheader">Framework Performance Metrics</div>', unsafe_allow_html=True)
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.metric(label="Quantum Processing Speedup", 
-              value=f"{random.uniform(1.5, 10.0):.2f}x", 
-              delta=f"{random.uniform(0.1, 0.5):.2f}x")
-
-with col2:
-    st.metric(label="Active Qubits", 
-              value=f"{n_qubits}/{29}", 
-              delta=None)
-
-with col3:
-    st.metric(label="Quantum Circuit Depth", 
-              value=random.randint(10, 50), 
-              delta=random.randint(-5, 5))
-
 # Footer
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #888888; font-size: 0.8em;">
-    QUASAR Framework v1.0.0 | Quantum-Accelerated Search and AI Reasoning<br>
-    © 2025 Quantum Labs | Built with Streamlit and PennyLane
+    Q3A: Quantum-Accelerated AI Agent | QUASAR Framework v1.0.0<br>
+    Combining quantum computing with AI for enhanced capabilities
 </div>
 """, unsafe_allow_html=True)
+
+def main():
+    """Main function, not explicitly needed with Streamlit"""
+    pass
+
+if __name__ == "__main__":
+    main()
