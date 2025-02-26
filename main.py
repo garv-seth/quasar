@@ -384,19 +384,19 @@ def display_home_page():
     with col1:
         if st.button("🧮 Factorization", key="nav_factor"):
             st.session_state.page = "factorization"
-            st.experimental_rerun()
+            st.rerun()
     with col2:
         if st.button("🔍 Search", key="nav_search"):
             st.session_state.page = "search"
-            st.experimental_rerun()
+            st.rerun()
     with col3:
         if st.button("⚙️ Optimization", key="nav_opt"):
             st.session_state.page = "optimization"
-            st.experimental_rerun()
+            st.rerun()
     with col4:
         if st.button("🚀 Demonstrations", key="nav_demo"):
             st.session_state.page = "demo"
-            st.experimental_rerun()
+            st.rerun()
 
     # Feature cards
     st.markdown("### 🚀 Key Features")
@@ -1252,35 +1252,35 @@ def main():
 
         if st.button("🏠 Home", key="nav_home"):
             st.session_state.page = "home"
-            st.experimental_rerun()
+            st.rerun()
 
         st.markdown("#### Core Features")
 
         if st.button("🧮 Factorization", key="nav_fact"):
             st.session_state.page = "factorization"
-            st.experimental_rerun()
+            st.rerun()
 
         if st.button("🔍 Search", key="nav_srch"):
             st.session_state.page = "search"
-            st.experimental_rerun()
+            st.rerun()
 
         if st.button("⚙️ Optimization", key="nav_opti"):
             st.session_state.page = "optimization"
-            st.experimental_rerun()
+            st.rerun()
 
         st.markdown("#### Additional Tools")
 
         if st.button("🚀 Demonstrations", key="nav_dem"):
             st.session_state.page = "demo"
-            st.experimental_rerun()
+            st.rerun()
 
         if st.button("📋 Task History", key="nav_hist"):
             st.session_state.page = "history"
-            st.experimental_rerun()
+            st.rerun()
 
         if st.button("⚙️ Settings", key="nav_set"):
             st.session_state.page = "settings"
-            st.experimental_rerun()
+            st.rerun()
 
         # Quantum settings summary
         st.markdown("### Quantum Settings")
