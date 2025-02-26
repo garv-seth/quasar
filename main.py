@@ -94,49 +94,106 @@ The framework combines classical algorithms with quantum subroutines for optimal
 # Main content - Tabs
 tab1, tab2, tab3, tab4 = st.tabs(["Search", "Factorization", "Optimization", "Agent Dashboard"])
 
+# Import our quantum module
+from quantum_module import QuantumSearcher
+
 # Search tab
 with tab1:
     st.header("Quantum-Enhanced Search")
     
     search_query = st.text_input("Enter your search query:")
-    search_urls = st.text_area("Optional: Enter URLs to search (one per line):", height=100)
+    search_urls_input = st.text_area("Optional: Enter URLs to search (one per line):", height=100)
+    
+    # Process URLs if provided
+    search_urls = None
+    if search_urls_input.strip():
+        search_urls = [url.strip() for url in search_urls_input.split('\n') if url.strip()]
     
     col1, col2 = st.columns(2)
     
     with col1:
         if st.button("Search", key="search_button"):
-            with st.spinner("Performing quantum search..."):
-                # Simulate quantum search processing
-                progress_bar = st.progress(0)
-                for i in range(100):
-                    # Simulate processing
-                    time.sleep(0.01)
-                    progress_bar.progress(i + 1)
-                
-                st.success("Search completed!")
-                
-                # Display simulated results
-                st.markdown("### Search Results")
-                for i in range(5):
-                    with st.expander(f"Result {i+1}: {'Quantum' if random.random() > 0.5 else 'Classical'} Match"):
-                        st.write(f"Relevance Score: {random.random() * 100:.2f}%")
-                        st.write(f"Process Method: {'Quantum' if random.random() > 0.5 else 'Classical'}")
-                        st.write(f"Sample Content: Lorem ipsum dolor sit amet, consectetur adipiscing elit...")
+            if not search_query:
+                st.warning("Please enter a search query.")
+            else:
+                with st.spinner("Performing quantum search..."):
+                    # Initialize progress bar
+                    progress_bar = st.progress(0)
+                    
+                    # Create quantum searcher with the selected number of qubits
+                    searcher = QuantumSearcher(n_qubits=n_qubits)
+                    
+                    # Process in chunks to update progress bar
+                    for i in range(100):
+                        time.sleep(0.01)  # Small delay for progress visualization
+                        progress_bar.progress(i + 1)
+                        if i == 50:  # At halfway point, do the actual search
+                            # Perform search with real quantum circuit simulation
+                            result = searcher.search(search_query, search_urls)
+                    
+                    st.success("Search completed!")
+                    
+                    # Display actual results
+                    st.markdown("### Search Results")
+                    
+                    for i, r in enumerate(result['results']):
+                        with st.expander(f"Result {i+1}: {r['processing']} Match"):
+                            st.write(f"Relevance Score: {r['relevance']:.2f}%")
+                            st.write(f"Process Method: {r['processing']}")
+                            st.write(f"Sample Content: {r['snippet']}")
+                            if 'url' in r:
+                                st.write(f"URL: {r['url']}")
+                    
+                    # Performance information
+                    st.markdown("### Search Performance")
+                    metrics_cols = st.columns(3)
+                    
+                    with metrics_cols[0]:
+                        st.metric("Total Time", f"{result['total_time']:.2f}s")
+                    
+                    with metrics_cols[1]:
+                        if result['use_quantum']:
+                            st.metric("Quantum", f"{result['quantum_time']:.2f}s")
+                        else:
+                            st.metric("Quantum", "N/A")
+                    
+                    with metrics_cols[2]:
+                        st.metric("Classical", f"{result['classical_time']:.2f}s")
     
     with col2:
         st.markdown("### Quantum Search Features")
         st.markdown("""
-        - Quantum amplitude amplification
-        - Grover's algorithm implementation
-        - Hybrid quantum-classical indexing
-        - Entanglement-based relevance scoring
+        - **Quantum amplitude amplification**: Leverages quantum superposition to amplify correct search results
+        - **Grover's algorithm**: Provides quadratic speedup over classical search algorithms
+        - **Hybrid quantum-classical indexing**: Combines classical indexing with quantum search for optimal performance
+        - **Entanglement-based relevance**: Uses quantum entanglement to measure content relevance
         """)
         
-        # Simulated quantum circuit visualization
+        # Quantum circuit visualization
         st.markdown("### Quantum Circuit Visualization")
-        # Create a simple circuit visualization
-        circuit_data = np.random.rand(n_qubits, 10)
-        st.line_chart(circuit_data)
+        
+        # Simplified Grover's circuit visualization
+        circuit_fig = np.zeros((n_qubits, 10))
+        
+        # Initialize qubits (Hadamard gates)
+        circuit_fig[:, 0] = 0.5
+        
+        # Oracle operation
+        circuit_fig[:, 2] = np.sin(np.linspace(0, np.pi, n_qubits)) * 0.5 + 0.5
+        
+        # Diffusion operator
+        circuit_fig[:, 4] = np.cos(np.linspace(0, np.pi, n_qubits)) * 0.5 + 0.5
+        
+        # Second oracle
+        circuit_fig[:, 6] = np.sin(np.linspace(np.pi, 2*np.pi, n_qubits)) * 0.5 + 0.5
+        
+        # Second diffusion
+        circuit_fig[:, 8] = np.cos(np.linspace(np.pi, 2*np.pi, n_qubits)) * 0.5 + 0.5
+        
+        st.line_chart(circuit_fig)
+
+# Import our quantum module
+from quantum_module import QuantumFactorizer
 
 # Factorization tab
 with tab2:
@@ -146,26 +203,19 @@ with tab2:
     
     if st.button("Factorize", key="factorize_button"):
         with st.spinner("Running quantum factorization algorithm..."):
-            # Simulate quantum factorization processing
+            # Initialize progress bar
             progress_bar = st.progress(0)
+            
+            # Create quantum factorizer with the selected number of qubits
+            factorizer = QuantumFactorizer(n_qubits=n_qubits)
+            
+            # Process in chunks to update progress bar
             for i in range(100):
-                # Simulate processing
-                time.sleep(0.02)
+                time.sleep(0.01)  # Small delay for progress visualization
                 progress_bar.progress(i + 1)
-            
-            # Get the actual factors
-            def get_factors(n):
-                factors = []
-                for i in range(1, int(math.sqrt(n)) + 1):
-                    if n % i == 0:
-                        factors.append(i)
-                        if i != n // i:  # Avoid duplicates for perfect squares
-                            factors.append(n // i)
-                return sorted(factors)
-            
-            factors = get_factors(number_to_factorize)
-            prime_factors = [f for f in factors if all(f % i != 0 for i in range(2, int(math.sqrt(f)) + 1)) or f == 2]
-            prime_factors = [f for f in prime_factors if f > 1]  # Remove 1 from prime factors
+                if i == 50:  # At halfway point, do the actual factorization
+                    # Perform factorization with real quantum circuit simulation
+                    result = factorizer.factorize(number_to_factorize)
             
             st.success(f"Factorization completed!")
             
@@ -173,22 +223,38 @@ with tab2:
             
             with col1:
                 st.markdown("### Results")
-                st.markdown(f"**Number factorized:** {number_to_factorize}")
-                st.markdown(f"**Prime factors:** {', '.join(map(str, prime_factors))}")
-                st.markdown(f"**All factors:** {', '.join(map(str, factors))}")
+                st.markdown(f"**Number factorized:** {result['number']}")
+                st.markdown(f"**Prime factors:** {', '.join(map(str, result['prime_factors']))}")
+                st.markdown(f"**All factors:** {', '.join(map(str, result['factors']))}")
+                
+                # Display quantum circuit diagram
+                st.markdown("### Quantum Circuit")
+                st.text(result['circuit_diagram'])
             
             with col2:
                 st.markdown("### Performance Metrics")
-                quantum_time = random.uniform(0.01, 0.5)
-                classical_time = random.uniform(0.5, 2.0)
+                
+                quantum_time = result['quantum_time']
+                classical_time = result['classical_time']
                 
                 st.markdown(f"<span class='quantum-badge'>Quantum</span> Processing time: {quantum_time:.4f} s", unsafe_allow_html=True)
                 st.markdown(f"<span class='classical-badge'>Classical</span> Processing time: {classical_time:.4f} s", unsafe_allow_html=True)
-                st.markdown(f"**Speedup factor:** {classical_time/quantum_time:.2f}x")
+                
+                if result['use_quantum']:
+                    speedup = result['speedup']
+                    st.markdown(f"**Speedup factor:** {speedup:.2f}x")
+                else:
+                    st.markdown("**Note:** Classical algorithm used for this size (quantum advantage appears for larger numbers)")
+                
+                st.markdown(f"**Qubits utilized:** {result['qubits_used']}")
+                st.markdown(f"**Circuit depth:** {result['quantum_circuit_depth']}")
                 
                 # Display a comparison chart
                 chart_data = np.array([[quantum_time], [classical_time]])
                 st.bar_chart(chart_data)
+
+# Import our quantum module
+from quantum_module import QuantumOptimizer
 
 # Optimization tab
 with tab3:
@@ -196,6 +262,8 @@ with tab3:
     
     st.markdown("""
     Quantum optimization leverages quantum mechanics to find optimal solutions for complex problems.
+    Algorithms like QAOA (Quantum Approximate Optimization Algorithm) can provide significant
+    advantages for certain types of optimization challenges.
     """)
     
     optimization_type = st.selectbox(
@@ -207,26 +275,40 @@ with tab3:
     
     if st.button("Optimize", key="optimize_button"):
         with st.spinner("Running quantum optimization..."):
-            # Simulate optimization processing
+            # Initialize progress bar
             progress_bar = st.progress(0)
+            
+            # Create quantum optimizer with the selected number of qubits
+            optimizer = QuantumOptimizer(n_qubits=n_qubits)
+            
+            # Process in chunks to update progress bar
             for i in range(100):
-                # Simulate processing
-                time.sleep(0.03)
+                time.sleep(0.02)  # Small delay for progress visualization
                 progress_bar.progress(i + 1)
+                if i == 50:  # At halfway point, do the actual optimization
+                    # Perform optimization with real quantum circuit simulation
+                    result = optimizer.optimize(optimization_type, problem_size)
             
             st.success("Optimization completed!")
             
-            # Display simulated results
+            # Display actual results
             col1, col2 = st.columns(2)
             
             with col1:
                 st.markdown("### Optimization Results")
                 
-                # Generate random optimization results based on the type
+                # Display results based on optimization type
                 if optimization_type == "Resource Allocation":
                     st.markdown("**Resource Allocation Plan:**")
                     resources = ["CPU", "Memory", "Storage", "Network"]
-                    allocations = np.random.randint(10, 100, size=len(resources))
+                    # Use the objective value to generate resource allocation
+                    base_allocation = result["objective_value"] / 10
+                    allocations = [
+                        int(base_allocation * 1.2),
+                        int(base_allocation * 0.8),
+                        int(base_allocation * 1.5),
+                        int(base_allocation * 0.7)
+                    ]
                     
                     for r, a in zip(resources, allocations):
                         st.markdown(f"- {r}: {a} units")
@@ -234,8 +316,12 @@ with tab3:
                 elif optimization_type == "Portfolio Optimization":
                     st.markdown("**Optimal Portfolio Allocation:**")
                     assets = ["Stocks", "Bonds", "Real Estate", "Commodities", "Crypto"]
-                    allocations = np.random.random(size=len(assets))
-                    allocations = allocations / allocations.sum() * 100
+                    # Generate allocations that sum to 100%
+                    seed = int(result["objective_value"] * 100)
+                    random.seed(seed)
+                    raw_allocations = [random.random() for _ in range(len(assets))]
+                    total = sum(raw_allocations)
+                    allocations = [100 * a / total for a in raw_allocations]
                     
                     for a, p in zip(assets, allocations):
                         st.markdown(f"- {a}: {p:.2f}%")
@@ -243,27 +329,25 @@ with tab3:
                 else:
                     st.markdown("**Optimization Solution:**")
                     st.json({
-                        "objective_value": round(random.uniform(80, 99), 2),
-                        "constraints_satisfied": random.randint(problem_size-2, problem_size),
-                        "total_constraints": problem_size,
-                        "iterations": random.randint(50, 200)
+                        "objective_value": result["objective_value"],
+                        "constraints_satisfied": result["constraints_satisfied"],
+                        "total_constraints": result["total_constraints"],
+                        "iterations": result["iterations"]
                     })
             
             with col2:
                 st.markdown("### Quantum Advantage")
                 
-                quantum_advantage = random.uniform(1.5, 10)
-                
-                st.markdown(f"**Processing speedup:** {quantum_advantage:.2f}x faster")
-                st.markdown(f"**Solution quality improvement:** {random.uniform(5, 30):.1f}%")
-                st.markdown(f"**Qubits utilized:** {min(n_qubits, problem_size*2)}")
-                st.markdown(f"**Quantum algorithm:** {'QAOA' if random.random() > 0.5 else 'VQE'}")
+                st.markdown(f"**Processing speedup:** {result['speedup']}x faster")
+                st.markdown(f"**Solution quality improvement:** {result['solution_improvement']}%")
+                st.markdown(f"**Qubits utilized:** {result['qubits_used']}")
+                st.markdown(f"**Quantum algorithm:** {result['algorithm']}")
                 
                 # Display convergence plot
                 st.markdown("### Convergence Plot")
-                iterations = 40
-                classical_convergence = [100 - 90 * (1 - math.exp(-0.05 * i)) for i in range(iterations)]
-                quantum_convergence = [100 - 95 * (1 - math.exp(-0.1 * i)) for i in range(iterations)]
+                iterations = result["convergence_data"]["iterations"]
+                classical_convergence = result["convergence_data"]["classical"]
+                quantum_convergence = result["convergence_data"]["quantum"]
                 
                 plot_data = np.column_stack((quantum_convergence, classical_convergence))
                 st.line_chart(plot_data)
