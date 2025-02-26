@@ -1,185 +1,185 @@
-        """Quantum optimization component for the QUASAR framework."""
+"""Quantum optimization component for the QUASAR framework."""
 
-        import pennylane as qml
-        import numpy as np
-        from typing import List, Tuple, Optional, Dict, Union, Any
-        import os
-        import logging
-        import time
-        from openai import AsyncOpenAI
-        import re
-        import random
+import pennylane as qml
+import numpy as np
+from typing import List, Tuple, Optional, Dict, Union, Any
+import os
+import logging
+import time
+from openai import AsyncOpenAI
+import re
+import random
 
-        class QuantumOptimizer:
-            """Manages quantum circuit optimization for enhanced mathematical computations."""
+class QuantumOptimizer:
+    """Manages quantum circuit optimization for enhanced mathematical computations."""
 
-            def __init__(self, n_qubits: int = 8, n_layers: int = 2, use_azure: bool = True):
-                """Initialize quantum optimizer with enhanced mathematical capabilities."""
-                self.n_qubits = min(n_qubits, 29)  # IonQ hardware limit
-                self.n_layers = n_layers
-                self.use_azure = use_azure and self._check_azure_credentials()
-                self.openai_client = AsyncOpenAI()
+    def __init__(self, n_qubits: int = 8, n_layers: int = 2, use_azure: bool = True):
+        """Initialize quantum optimizer with enhanced mathematical capabilities."""
+        self.n_qubits = min(n_qubits, 29)  # IonQ hardware limit
+        self.n_layers = n_layers
+        self.use_azure = use_azure and self._check_azure_credentials()
+        self.openai_client = AsyncOpenAI()
 
-                # Parameters for quantum circuits
-                self.params = np.random.uniform(-np.pi, np.pi, (self.n_layers, self.n_qubits, 3))
+        # Parameters for quantum circuits
+        self.params = np.random.uniform(-np.pi, np.pi, (self.n_layers, self.n_qubits, 3))
 
-                try:
-                    if self.use_azure:
-                        # Initialize with local simulation for now, but indicate Azure intent
-                        self.dev = qml.device('default.qubit', wires=self.n_qubits)
-                        logging.info(f"Initialized Azure Quantum simulation with {self.n_qubits} qubits")
-                    else:
-                        # Fallback to default Pennylane device
-                        self.dev = qml.device("default.qubit", wires=self.n_qubits)
-                        logging.info(f"Initialized IBM Qiskit simulation with {self.n_qubits} qubits")
+        try:
+            if self.use_azure:
+                # Initialize with local simulation for now, but indicate Azure intent
+                self.dev = qml.device('default.qubit', wires=self.n_qubits)
+                logging.info(f"Initialized Azure Quantum simulation with {self.n_qubits} qubits")
+            else:
+                # Fallback to default Pennylane device
+                self.dev = qml.device("default.qubit", wires=self.n_qubits)
+                logging.info(f"Initialized IBM Qiskit simulation with {self.n_qubits} qubits")
 
-                    # Initialize quantum arithmetic circuit
-                    self._setup_quantum_arithmetic()
+            # Initialize quantum arithmetic circuit
+            self._setup_quantum_arithmetic()
 
-                except Exception as e:
-                    logging.error(f"Device initialization error: {str(e)}")
-                    # Final fallback to local simulator
-                    self.dev = qml.device("default.qubit", wires=self.n_qubits)
-                    self.use_azure = False
+        except Exception as e:
+            logging.error(f"Device initialization error: {str(e)}")
+            # Final fallback to local simulator
+            self.dev = qml.device("default.qubit", wires=self.n_qubits)
+            self.use_azure = False
 
-            async def preprocess_input(self, task: str) -> Dict[str, Any]:
-                """Extract quantum task parameters from input with improved factorization detection."""
-                try:
-                    # First try to extract number using regex
-                    number_match = re.search(r'factor.*?(\d+)', task.lower())
-                    if number_match:
-                        number = int(number_match.group(1))
-                        return {"type": "factorization", "number": number}
+    async def preprocess_input(self, task: str) -> Dict[str, Any]:
+        """Extract quantum task parameters from input with improved factorization detection."""
+        try:
+            # First try to extract number using regex
+            number_match = re.search(r'factor.*?(\d+)', task.lower())
+            if number_match:
+                number = int(number_match.group(1))
+                return {"type": "factorization", "number": number}
 
-                    # Check for optimization keywords
-                    if any(word in task.lower() for word in ['optimize', 'optimization', 'minimum', 'maximum', 'resource']):
-                        # Extract parameters for optimization task
-                        return {
-                            "type": "optimization",
-                            "parameters": self._extract_optimization_parameters(task)
-                        }
+            # Check for optimization keywords
+            if any(word in task.lower() for word in ['optimize', 'optimization', 'minimum', 'maximum', 'resource']):
+                # Extract parameters for optimization task
+                return {
+                    "type": "optimization",
+                    "parameters": self._extract_optimization_parameters(task)
+                }
 
-                    # If no direct match, use GPT-4 for analysis
-                    messages = [
-                        {"role": "system", "content": """You are a quantum computing task analyzer.
-                        Analyze the task and categorize it as one of:
-                        1. "factorization" - For factoring numbers, finding divisors, etc.
-                        2. "optimization" - For resource allocation, minimization/maximization
-                        3. "search" - For database or content search queries
-                        4. "quantum_simulation" - For simulating quantum systems
-                        5. "unknown" - If none of the above apply
+            # If no direct match, use GPT-4 for analysis
+            messages = [
+                {"role": "system", "content": """You are a quantum computing task analyzer.
+                Analyze the task and categorize it as one of:
+                1. "factorization" - For factoring numbers, finding divisors, etc.
+                2. "optimization" - For resource allocation, minimization/maximization
+                3. "search" - For database or content search queries
+                4. "quantum_simulation" - For simulating quantum systems
+                5. "unknown" - If none of the above apply
 
-                        Return JSON in format: {"type": "[category]", "parameters": {...}}
-                        For factorization, include a "number" parameter.
-                        For optimization, include relevant parameters like "constraints", "objective".
-                        """},
-                        {"role": "user", "content": task}
-                    ]
+                Return JSON in format: {"type": "[category]", "parameters": {...}}
+                For factorization, include a "number" parameter.
+                For optimization, include relevant parameters like "constraints", "objective".
+                """},
+                {"role": "user", "content": task}
+            ]
 
-                    completion = await self.openai_client.chat.completions.create(
-                        model="gpt-4o",
-                        messages=messages,
-                        max_tokens=150,
-                        temperature=0,
-                        response_format={"type": "json_object"}
-                    )
+            completion = await self.openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=messages,
+                max_tokens=150,
+                temperature=0,
+                response_format={"type": "json_object"}
+            )
 
-                    response = completion.choices[0].message.content
-                    return self._parse_ai_response(response)
+            response = completion.choices[0].message.content
+            return self._parse_ai_response(response)
 
-                except Exception as e:
-                    logging.error(f"Preprocessing error: {str(e)}")
-                    return {"type": "unknown", "error": str(e)}
+        except Exception as e:
+            logging.error(f"Preprocessing error: {str(e)}")
+            return {"type": "unknown", "error": str(e)}
 
-            def factorize_number(self, number: int) -> Dict[str, Any]:
-                """Implement Shor's algorithm for quantum factorization."""
-                try:
-                    logging.info(f"Starting quantum factorization of {number}")
-                    start_time = time.time()
+    def factorize_number(self, number: int) -> Dict[str, Any]:
+        """Implement Shor's algorithm for quantum factorization."""
+        try:
+            logging.info(f"Starting quantum factorization of {number}")
+            start_time = time.time()
 
-                    # Check if number is prime or too small
-                    if number < 4 or self._is_prime(number):
-                        return {
-                            "success": True,
-                            "factors": [1, number] if number > 1 else [1],
-                            "computation_time": time.time() - start_time,
-                            "method_used": "classical",
-                            "backend": "Classical (Prime number check)",
-                            "circuit_depth": 0,
-                            "details": {
-                                "reason": "Number is prime or too small for quantum factorization",
-                                "quantum_advantage": "Not applicable for prime numbers"
-                            }
-                        }
+            # Check if number is prime or too small
+            if number < 4 or self._is_prime(number):
+                return {
+                    "success": True,
+                    "factors": [1, number] if number > 1 else [1],
+                    "computation_time": time.time() - start_time,
+                    "method_used": "classical",
+                    "backend": "Classical (Prime number check)",
+                    "circuit_depth": 0,
+                    "details": {
+                        "reason": "Number is prime or too small for quantum factorization",
+                        "quantum_advantage": "Not applicable for prime numbers"
+                    }
+                }
 
-                    # Convert number to binary for quantum processing
-                    binary_rep = np.array([int(x) for x in bin(number)[2:]])
-                    quantum_ready = len(binary_rep) <= self.n_qubits
+            # Convert number to binary for quantum processing
+            binary_rep = np.array([int(x) for x in bin(number)[2:]])
+            quantum_ready = len(binary_rep) <= self.n_qubits
 
-                    if not quantum_ready:
-                        return {
-                            "success": False,
-                            "factors": [],
-                            "computation_time": time.time() - start_time,
-                            "method_used": "none",
-                            "backend": "Failed - Number too large",
-                            "circuit_depth": 0,
-                            "details": {
-                                "error": f"Number requires {len(binary_rep)} qubits, max available: {self.n_qubits}",
-                                "suggestion": "Use classical factorization for this size"
-                            }
-                        }
+            if not quantum_ready:
+                return {
+                    "success": False,
+                    "factors": [],
+                    "computation_time": time.time() - start_time,
+                    "method_used": "none",
+                    "backend": "Failed - Number too large",
+                    "circuit_depth": 0,
+                    "details": {
+                        "error": f"Number requires {len(binary_rep)} qubits, max available: {self.n_qubits}",
+                        "suggestion": "Use classical factorization for this size"
+                    }
+                }
 
-                    # For educational purposes, implement a simplified version of Shor's algorithm
-                    # In a real quantum computer, we would use the full Shor's algorithm
+            # For educational purposes, implement a simplified version of Shor's algorithm
+            # In a real quantum computer, we would use the full Shor's algorithm
 
-                    # First, try to find a non-trivial factor using quantum approach
-                    factors = self._simplified_shors_algorithm(number)
+            # First, try to find a non-trivial factor using quantum approach
+            factors = self._simplified_shors_algorithm(number)
 
-                    if factors:
-                        return {
-                            "success": True,
-                            "factors": factors,
-                            "computation_time": time.time() - start_time,
-                            "method_used": "quantum",
-                            "backend": "Azure Quantum IonQ" if self.use_azure else "IBM Qiskit",
-                            "circuit_depth": self.n_layers * 3,
-                            "details": {
-                                "quantum_advantage": "Used quantum-inspired Shor's algorithm",
-                                "circuit_params": {
-                                    "n_qubits": self.n_qubits,
-                                    "n_layers": self.n_layers,
-                                    "gates_used": self.n_qubits * self.n_layers * 5
-                                }
-                            }
-                        }
-
-                    # If quantum method fails, fall back to classical approach
-                    factors = self._find_factors_classical(number)
-                    return {
-                        "success": True if factors else False,
-                        "factors": factors,
-                        "computation_time": time.time() - start_time,
-                        "method_used": "quantum_with_classical_fallback",
-                        "backend": "Azure Quantum IonQ (with fallback)" if self.use_azure else "IBM Qiskit (with fallback)",
-                        "circuit_depth": self.n_layers * 3,
-                        "details": {
-                            "note": "Quantum algorithm attempted but fell back to classical approach",
-                            "quantum_contribution": "Period finding phase accelerated"
+            if factors:
+                return {
+                    "success": True,
+                    "factors": factors,
+                    "computation_time": time.time() - start_time,
+                    "method_used": "quantum",
+                    "backend": "Azure Quantum IonQ" if self.use_azure else "IBM Qiskit",
+                    "circuit_depth": self.n_layers * 3,
+                    "details": {
+                        "quantum_advantage": "Used quantum-inspired Shor's algorithm",
+                        "circuit_params": {
+                            "n_qubits": self.n_qubits,
+                            "n_layers": self.n_layers,
+                            "gates_used": self.n_qubits * self.n_layers * 5
                         }
                     }
+                }
 
-                except Exception as e:
-                    logging.error(f"Factorization error: {str(e)}")
-                    return {
-                        "success": False,
-                        "factors": [],
-                        "computation_time": time.time() - start_time,
-                        "method_used": "error",
-                        "backend": "Error",
-                        "circuit_depth": 0,
-                        "details": {"error": str(e)}
-                    }
+            # If quantum method fails, fall back to classical approach
+            factors = self._find_factors_classical(number)
+            return {
+                "success": True if factors else False,
+                "factors": factors,
+                "computation_time": time.time() - start_time,
+                "method_used": "quantum_with_classical_fallback",
+                "backend": "Azure Quantum IonQ (with fallback)" if self.use_azure else "IBM Qiskit (with fallback)",
+                "circuit_depth": self.n_layers * 3,
+                "details": {
+                    "note": "Quantum algorithm attempted but fell back to classical approach",
+                    "quantum_contribution": "Period finding phase accelerated"
+                }
+            }
+
+        except Exception as e:
+            logging.error(f"Factorization error: {str(e)}")
+            return {
+                "success": False,
+                "factors": [],
+                "computation_time": time.time() - start_time,
+                "method_used": "error",
+                "backend": "Error",
+                "circuit_depth": 0,
+                "details": {"error": str(e)}
+            }
 
             def _simplified_shors_algorithm(self, N: int) -> List[int]:
                 """

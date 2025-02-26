@@ -706,7 +706,7 @@ def display_search_page():
         st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/a/ae/Quantum_amplitude_of_Grover_iterations.png/400px-Quantum_amplitude_of_Grover_iterations.png", 
                 caption="Amplitude amplification in Grover's algorithm (Source: Wikipedia)")
 
-def display_optimization_page():
+async def display_optimization_page():
     """Display the optimization page."""
     st.title("⚙️ Quantum Optimization")
 
@@ -1307,7 +1307,10 @@ def main():
     elif st.session_state.page == "search":
         display_search_page()
     elif st.session_state.page == "optimization":
-        display_optimization_page()
+        # Special handling for async function
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(display_optimization_page())
     elif st.session_state.page == "demo":
         display_demo_page()
     elif st.session_state.page == "history":
