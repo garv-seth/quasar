@@ -3,5 +3,5 @@
 import sys
 import os
 
-# Run the basic app interface
-import basic_app
+# Run the simple hello app
+import hello
