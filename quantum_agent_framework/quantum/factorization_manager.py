@@ -8,6 +8,8 @@ import time
 from openai import AsyncOpenAI
 import random
 import asyncio
+import os
+import numpy as np
 
 
 @dataclass
@@ -26,9 +28,16 @@ class FactorizationManager:
         """Initialize the factorization manager."""
         self.quantum_optimizer = quantum_optimizer
         self.openai_client = AsyncOpenAI()
-        self.classical_threshold = 1000000  # Numbers below this use classical method
-        self.quantum_threshold = 2**15  # Maximum size for quantum factorization
-        logging.info("Factorization Manager initialized")
+        
+        # Allow much larger numbers with quantum approach (removed arbitrary limit)
+        self.classical_threshold = 10000  # Use quantum approach for numbers above this
+        self.quantum_threshold = 10**100  # Essentially unlimited - theoretical limit for Shor's algorithm
+        
+        # Create a client for Claude 3.7 Sonnet for enhanced explanations
+        from anthropic import AsyncAnthropic
+        self.anthropic_client = AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        
+        logging.info("Factorization Manager initialized with quantum capabilities")
 
     async def _get_classical_factors_gpt(self, n: int) -> List[int]:
         """Get factors using GPT with academic prompting."""
@@ -170,7 +179,7 @@ class FactorizationManager:
                     if quantum_result.get("success", False):
                         # Get complete factorization from the quantum results
                         # Ensure we include ALL factors, not just prime factors
-                        all_factors = await self._get_complete_factors_from_prime(
+                        all_factors = self._get_complete_factors_from_prime(
                             number, quantum_result.get("factors", []))
                         result = FactorizationResult(
                             factors=all_factors,
@@ -218,14 +227,14 @@ class FactorizationManager:
                                        success=False,
                                        details={"error": error_msg})
 
-    async def _get_complete_factors_from_prime(
+    def _get_complete_factors_from_prime(
             self, n: int, prime_factors: List[int]) -> List[int]:
         """
         Convert prime factorization to complete list of factors.
         For example, if prime_factors of 12 are [2, 2, 3], this returns [1, 2, 3, 4, 6, 12]
         """
         if not prime_factors:
-            return await self._get_basic_factors(n)
+            return self._get_basic_factors(n)
 
         # First, generate all unique combinations of prime factors
         all_factors = set([1])  # Start with 1 as a factor

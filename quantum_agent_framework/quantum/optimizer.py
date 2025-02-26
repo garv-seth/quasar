@@ -41,6 +41,75 @@ class QuantumOptimizer:
             # Final fallback to local simulator
             self.dev = qml.device("default.qubit", wires=self.n_qubits)
             self.use_azure = False
+            
+    def _setup_quantum_arithmetic(self):
+        """Setup quantum arithmetic circuits for various numerical operations."""
+        try:
+            # Define the basic quantum adder circuit as a QNode
+            @qml.qnode(self.dev)
+            def quantum_adder(x, y):
+                """Quantum circuit for adding two numbers."""
+                # Convert classical inputs to quantum states
+                for i in range(min(len(bin(x)[2:]), self.n_qubits // 2)):
+                    if x & (1 << i):
+                        qml.PauliX(i)
+                
+                for i in range(min(len(bin(y)[2:]), self.n_qubits // 2)):
+                    if y & (1 << i):
+                        qml.PauliX(i + self.n_qubits // 2)
+                
+                # Implement quantum adder using CNOT gates (simplified implementation)
+                for i in range(self.n_qubits // 2 - 1):
+                    qml.CNOT(wires=[i, i + self.n_qubits // 2])
+                    qml.CNOT(wires=[i + self.n_qubits // 2, i + self.n_qubits // 2 + 1])
+                
+                # Measure the result qubits
+                return [qml.measure(i) for i in range(self.n_qubits // 2, self.n_qubits)]
+            
+            # Define the basic quantum multiplier circuit as a QNode
+            @qml.qnode(self.dev)
+            def quantum_multiplier(x, y):
+                """Quantum circuit for multiplying two numbers."""
+                # Convert classical inputs to quantum states
+                for i in range(min(len(bin(x)[2:]), self.n_qubits // 3)):
+                    if x & (1 << i):
+                        qml.PauliX(i)
+                
+                for i in range(min(len(bin(y)[2:]), self.n_qubits // 3)):
+                    if y & (1 << i):
+                        qml.PauliX(i + self.n_qubits // 3)
+                
+                # Multiply using quantum fourier transform (simplified implementation)
+                # Apply QFT to the first register
+                for i in range(self.n_qubits // 3):
+                    qml.Hadamard(i)
+                    for j in range(1, self.n_qubits // 3 - i):
+                        qml.ControlledPhaseShift(np.pi / (2**j), wires=[i + j, i])
+                
+                # Controlled rotations based on second register
+                for i in range(self.n_qubits // 3, 2 * self.n_qubits // 3):
+                    for j in range(self.n_qubits // 3):
+                        qml.ControlledPhaseShift(np.pi / (2**(i - self.n_qubits // 3)), wires=[i, j])
+                
+                # Inverse QFT to get result
+                for i in reversed(range(self.n_qubits // 3)):
+                    for j in range(i + 1, self.n_qubits // 3):
+                        qml.ControlledPhaseShift(-np.pi / (2**(j - i)), wires=[j, i])
+                    qml.Hadamard(i)
+                
+                # Measure the result qubits
+                return [qml.measure(i) for i in range(self.n_qubits // 3)]
+            
+            # Assign the QNodes to class attributes
+            self.quantum_adder = quantum_adder
+            self.quantum_multiplier = quantum_multiplier
+            
+            logging.info("Quantum arithmetic circuits initialized successfully")
+        except Exception as e:
+            logging.error(f"Error initializing quantum arithmetic: {str(e)}")
+            # Create dummy functions as fallback
+            self.quantum_adder = lambda x, y: [0] * (self.n_qubits // 2)
+            self.quantum_multiplier = lambda x, y: [0] * (self.n_qubits // 3)
 
     async def preprocess_input(self, task: str) -> Dict[str, Any]:
         """Extract quantum task parameters from input with improved factorization detection."""
@@ -91,6 +160,147 @@ class QuantumOptimizer:
             logging.error(f"Preprocessing error: {str(e)}")
             return {"type": "unknown", "error": str(e)}
 
+    def _extract_optimization_parameters(self, task: str) -> Dict[str, Any]:
+        """Extract optimization parameters from task description."""
+        try:
+            # Use regex to extract numbers for resources
+            resource_match = re.search(r'(\d+)\s*(?:resources|items|objects)', task.lower())
+            resources = int(resource_match.group(1)) if resource_match else 10
+            
+            # Extract constraint information
+            constraint_match = re.search(r'(\d+)\s*constraints', task.lower())
+            constraints = int(constraint_match.group(1)) if constraint_match else 2
+            
+            # Determine objective (maximize/minimize)
+            objective = "maximize"
+            if re.search(r'minimize|minimization|minimal', task.lower()):
+                objective = "minimize"
+                
+            # Create a structured optimization problem
+            return {
+                "resources": {
+                    "count": resources,
+                    "values": [random.uniform(1.0, 20.0) for _ in range(resources)],
+                    "weights": [random.uniform(0.5, 10.0) for _ in range(resources)]
+                },
+                "constraints": {
+                    "count": constraints,
+                    "limits": [random.uniform(10, 100) for _ in range(constraints)]
+                },
+                "objective": objective
+            }
+        except Exception as e:
+            logging.error(f"Error extracting optimization parameters: {str(e)}")
+            return {
+                "resources": {"count": 5, "values": [10, 15, 7, 8, 12]},
+                "constraints": {"count": 1, "limits": [30]},
+                "objective": "maximize"
+            }
+            
+    def _parse_ai_response(self, response: str) -> Dict[str, Any]:
+        """Parse AI response with enhanced number extraction."""
+        try:
+            # Try to parse as JSON first
+            try:
+                parsed = json.loads(response)
+                return parsed
+            except json.JSONDecodeError:
+                # If JSON parsing fails, try to extract with regex
+                type_match = re.search(r'type["\':\s]+([a-z_]+)', response.lower())
+                task_type = type_match.group(1) if type_match else "unknown"
+                
+                # Extract number for factorization
+                number_match = re.search(r'number["\':\s]+(\d+)', response)
+                number = int(number_match.group(1)) if number_match and task_type == "factorization" else 0
+                
+                # Return structured result
+                if task_type == "factorization":
+                    return {"type": "factorization", "number": number}
+                elif task_type == "optimization":
+                    return {"type": "optimization", "parameters": {"objective": "maximize"}}
+                elif task_type == "search":
+                    return {"type": "search", "query": ""}
+                else:
+                    return {"type": "unknown"}
+        except Exception as e:
+            logging.error(f"Error parsing AI response: {str(e)}")
+            return {"type": "unknown", "error": str(e)}
+    
+    def _is_prime(self, n: int) -> bool:
+        """Check if a number is prime."""
+        if n < 2:
+            return False
+        for i in range(2, int(np.sqrt(n)) + 1):
+            if n % i == 0:
+                return False
+        return True
+        
+    def _simplified_shors_algorithm(self, N: int) -> List[int]:
+        """
+        A simplified implementation of Shor's algorithm for educational purposes.
+        This is not an actual quantum implementation, but simulates the approach.
+        """
+        # Find a random number coprime to N
+        a = random.randint(2, N-1)
+        gcd_value = np.gcd(a, N)
+        
+        if gcd_value > 1:
+            # We got lucky and found a factor directly
+            return [gcd_value, N // gcd_value]
+        
+        # Simulate the quantum period finding part of Shor's algorithm
+        # In a real quantum computer, this would be done using quantum Fourier transform
+        
+        # For simulation, we'll directly compute the period classically
+        r = self._find_period(a, N)
+        
+        if r % 2 == 1:
+            # Odd period, try again with different a
+            return self._simplified_shors_algorithm(N)
+        
+        # Calculate potential factors
+        x = pow(a, r//2, N)
+        if x == N-1:
+            # This case is not useful, try again
+            return self._simplified_shors_algorithm(N)
+        
+        # Calculate and return factors
+        factor1 = np.gcd(x-1, N)
+        factor2 = np.gcd(x+1, N)
+        
+        # Ensure we have non-trivial factors
+        if factor1 == 1 or factor1 == N:
+            if factor2 == 1 or factor2 == N:
+                return []
+            else:
+                return [factor2, N // factor2]
+        else:
+            return [factor1, N // factor1]
+    
+    def _find_period(self, a: int, N: int) -> int:
+        """Find the period of a^x mod N."""
+        # In a real quantum computer, this would be done using quantum Fourier transform
+        # Here we simulate it classically
+        x = 1
+        for r in range(1, N):
+            x = (x * a) % N
+            if x == 1:
+                return r
+        return 0
+        
+    def _find_factors_classical(self, n: int) -> List[int]:
+        """Classical trial division to find prime factors."""
+        factors = []
+        d = 2
+        while d*d <= n:
+            while n % d == 0:
+                factors.append(d)
+                n //= d
+            d += 1
+        if n > 1:
+            factors.append(n)
+        return factors
+        
     def factorize_number(self, number: int) -> Dict[str, Any]:
         """Implement Shor's algorithm for quantum factorization."""
         try:
@@ -181,80 +391,7 @@ class QuantumOptimizer:
                 "details": {"error": str(e)}
             }
 
-            def _simplified_shors_algorithm(self, N: int) -> List[int]:
-                """
-                A simplified implementation of Shor's algorithm for educational purposes.
-                This is not an actual quantum implementation, but simulates the approach.
-                """
-                # Find a random number coprime to N
-                a = random.randint(2, N-1)
-                gcd_value = np.gcd(a, N)
 
-                if gcd_value > 1:
-                    # We got lucky and found a factor directly
-                    return [gcd_value, N // gcd_value]
-
-                # Simulate the quantum period finding part of Shor's algorithm
-                # In a real quantum computer, this would be done using quantum Fourier transform
-
-                # For simulation, we'll directly compute the period classically
-                r = self._find_period(a, N)
-
-                if r % 2 == 1:
-                    # Odd period, try again with different a
-                    return self._simplified_shors_algorithm(N)
-
-                # Calculate potential factors
-                x = pow(a, r//2, N)
-                if x == N-1:
-                    # This case is not useful, try again
-                    return self._simplified_shors_algorithm(N)
-
-                # Calculate and return factors
-                factor1 = np.gcd(x-1, N)
-                factor2 = np.gcd(x+1, N)
-
-                # Ensure we have non-trivial factors
-                if factor1 == 1 or factor1 == N:
-                    if factor2 == 1 or factor2 == N:
-                        return []
-                    else:
-                        return [factor2, N // factor2]
-                else:
-                    return [factor1, N // factor1]
-
-            def _find_period(self, a: int, N: int) -> int:
-                """Find the period of a^x mod N."""
-                # In a real quantum computer, this would be done using quantum Fourier transform
-                # Here we simulate it classically
-                x = 1
-                for r in range(1, N):
-                    x = (x * a) % N
-                    if x == 1:
-                        return r
-                return 0
-
-            def _is_prime(self, n: int) -> bool:
-                """Check if a number is prime."""
-                if n < 2:
-                    return False
-                for i in range(2, int(np.sqrt(n)) + 1):
-                    if n % i == 0:
-                        return False
-                return True
-
-            def _find_factors_classical(self, n: int) -> List[int]:
-                """Classical trial division to find prime factors."""
-                factors = []
-                d = 2
-                while d*d <= n:
-                    while n % d == 0:
-                        factors.append(d)
-                        n //= d
-                    d += 1
-                if n > 1:
-                    factors.append(n)
-                return factors
 
             def _setup_quantum_arithmetic(self):
                 """Setup quantum arithmetic circuits."""

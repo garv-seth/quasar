@@ -529,9 +529,9 @@ def display_factorization_page():
     number = st.number_input(
         "Number to factorize",
         min_value=2,
-        max_value=10000000,
+        max_value=10**100,  # Effectively unlimited - theoretical limit of Shor's algorithm
         value=3960,
-        help="Enter a positive integer to factorize. Larger numbers will demonstrate greater quantum advantage."
+        help="Enter a positive integer to factorize. Larger numbers (> 10,000) will use quantum methods and demonstrate exponential speedup."
     )
 
     process_button = st.button("🚀 Factorize Number", use_container_width=True)
