@@ -274,48 +274,48 @@ elif st.session_state.current_tab == "tasks":
         
         # Display by type
         for task_type, tasks in task_types.items():
-            with st.expander(f"{task_type.capitalize()} Tasks ({len(tasks)})", expanded=True):
-                for i, task in enumerate(tasks):
-                    with st.expander(f"Task {i+1}: {task['task'][:50]}...", expanded=False):
-                        st.write(f"**ID**: {task['task_id']}")
-                        st.write(f"**Type**: {task['task_type']}")
-                        st.write(f"**Time**: {task['execution_time']:.4f}s")
-                        st.write(f"**Quantum**: {'Yes' if task['use_quantum'] else 'No'}")
-                        
-                        # Task result display
-                        with st.expander("View Result", expanded=False):
-                            result = task["result"]
-                            # Format differently based on task type
-                            if task["task_type"] == "search":
-                                st.write(f"**Query**: {result['query']}")
-                                st.write(f"**Summary**: {result['summary']}")
-                                for i, r in enumerate(result['results'][:3]):
-                                    st.write(f"**Result {i+1}**: {r['title']}")
-                            elif task["task_type"] == "factorization":
-                                st.write(f"**Number**: {result['number']}")
-                                st.write(f"**Factors**: {', '.join(map(str, result['factors']))}")
-                                st.write(f"**Prime Factors**: {', '.join(map(str, result['prime_factors']))}")
-                            elif task["task_type"] == "optimization":
-                                st.write(f"**Objective Value**: {result['objective_value']}")
-                                st.write("**Solution**:")
-                                for k, v in result['solution'].items():
-                                    st.write(f"- {k}: {v}")
-                            else:
-                                st.write(result['response'])
-                                
-                        # Performance metrics
-                        with st.expander("Performance Metrics", expanded=False):
-                            cols = st.columns(3)
-                            with cols[0]:
-                                st.metric("Quantum Time", f"{task['result']['quantum_time']:.4f}s")
-                            with cols[1]:
-                                st.metric("Classical Time", f"{task['result']['classical_time']:.4f}s")
-                            with cols[2]:
-                                if task['use_quantum']:
-                                    speedup = task['result'].get('speedup', 0)
-                                    st.metric("Speedup", f"{speedup:.2f}x")
-                                else:
-                                    st.metric("Speedup", "N/A")
+            st.subheader(f"{task_type.capitalize()} Tasks ({len(tasks)})")
+            for i, task in enumerate(tasks):
+                with st.expander(f"Task {i+1}: {task['task'][:50]}...", expanded=False):
+                    st.write(f"**ID**: {task['task_id']}")
+                    st.write(f"**Type**: {task['task_type']}")
+                    st.write(f"**Time**: {task['execution_time']:.4f}s")
+                    st.write(f"**Quantum**: {'Yes' if task['use_quantum'] else 'No'}")
+                    
+                    # Task result display
+                    st.markdown("##### Result")
+                    result = task["result"]
+                    # Format differently based on task type
+                    if task["task_type"] == "search":
+                        st.write(f"**Query**: {result['query']}")
+                        st.write(f"**Summary**: {result['summary']}")
+                        for j, r in enumerate(result['results'][:3]):
+                            st.write(f"**Result {j+1}**: {r['title']}")
+                    elif task["task_type"] == "factorization":
+                        st.write(f"**Number**: {result['number']}")
+                        st.write(f"**Factors**: {', '.join(map(str, result['factors']))}")
+                        st.write(f"**Prime Factors**: {', '.join(map(str, result['prime_factors']))}")
+                    elif task["task_type"] == "optimization":
+                        st.write(f"**Objective Value**: {result['objective_value']}")
+                        st.write("**Solution**:")
+                        for k, v in result['solution'].items():
+                            st.write(f"- {k}: {v}")
+                    else:
+                        st.write(result['response'])
+                            
+                    # Performance metrics
+                    st.markdown("##### Performance Metrics")
+                    cols = st.columns(3)
+                    with cols[0]:
+                        st.metric("Quantum Time", f"{task['result']['quantum_time']:.4f}s")
+                    with cols[1]:
+                        st.metric("Classical Time", f"{task['result']['classical_time']:.4f}s")
+                    with cols[2]:
+                        if task['use_quantum']:
+                            speedup = task['result'].get('speedup', 0)
+                            st.metric("Speedup", f"{speedup:.2f}x")
+                        else:
+                            st.metric("Speedup", "N/A")
 
 elif st.session_state.current_tab == "performance":
     st.subheader("Quantum-Classical Performance Comparison")
