@@ -4,11 +4,42 @@ Main Streamlit Interface
 """
 
 import streamlit as st
-import numpy as np
-import pandas as pd
 import time
 import random
+import os
+import logging
 from datetime import datetime
+from typing import Dict, List, Any
+
+# Import our quantum core
+from quantum_core import QuantumCore
+
+# Try to import optional dependencies
+try:
+    import numpy as np
+except ImportError:
+    # Create a simple numpy substitute for basic functions
+    class np:
+        @staticmethod
+        def sqrt(x):
+            return x ** 0.5
+            
+        @staticmethod
+        def array(x):
+            return x
+
+try:
+    import pandas as pd
+except ImportError:
+    # Create a simple pandas DataFrame substitute
+    class pd:
+        @staticmethod
+        def DataFrame(data):
+            return data
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Page configuration
 st.set_page_config(
@@ -93,224 +124,25 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Simplified Quantum Agent
-class QuantumAgent:
-    """Simplified quantum agent for demonstration"""
-    
-    def __init__(self, use_quantum=True, n_qubits=8):
-        self.use_quantum = use_quantum
-        self.n_qubits = n_qubits
-        self.tasks_completed = 0
-        self.quantum_tasks = 0
-        self.classical_tasks = 0
-        self.total_quantum_time = 0.0
-        self.total_classical_time = 0.0
-        self.task_history = []
-    
-    def process_task(self, task):
-        """Process a user task with quantum enhancement when beneficial"""
-        start_time = time.time()
-        
-        # Analyze task type
-        task_type, use_quantum = self._analyze_task(task)
-        use_quantum = use_quantum and self.use_quantum
-        
-        # Process the task based on type
-        if task_type == "search":
-            result = self._simulate_search(task, use_quantum)
-        elif task_type == "factorization":
-            result = self._simulate_factorization(task, use_quantum)
-        elif task_type == "optimization":
-            result = self._simulate_optimization(task, use_quantum)
-        else:
-            result = self._simulate_general_task(task, use_quantum)
-        
-        # Update metrics
-        self.tasks_completed += 1
-        execution_time = time.time() - start_time
-        
-        if use_quantum:
-            self.quantum_tasks += 1
-            self.total_quantum_time += result["quantum_time"]
-        else:
-            self.classical_tasks += 1
-        self.total_classical_time += result["classical_time"]
-        
-        # Record in history
-        task_record = {
-            "id": len(self.task_history) + 1,
-            "task": task,
-            "task_type": task_type,
-            "use_quantum": use_quantum,
-            "result": result,
-            "execution_time": execution_time,
-            "timestamp": datetime.now().isoformat()
-        }
-        self.task_history.append(task_record)
-        
-        return task_record
-    
-    def _analyze_task(self, task):
-        """Determine the task type and whether quantum acceleration would be beneficial"""
-        task_lower = task.lower()
-        
-        if "search" in task_lower or "find" in task_lower:
-            return "search", True
-        elif "factor" in task_lower or "prime" in task_lower:
-            return "factorization", True
-        elif "optimize" in task_lower or "allocation" in task_lower:
-            return "optimization", True
-        else:
-            return "general", False
-    
-    def _simulate_search(self, task, use_quantum):
-        """Simulate quantum-enhanced search"""
-        # Extract query from task
-        query = task.replace("search for", "").replace("search", "").replace("find", "").strip()
-        
-        # Time simulation
-        classical_time = random.uniform(0.5, 2.0) * len(query) / 10
-        quantum_time = classical_time / (random.uniform(2.5, 3.5) if use_quantum else 1.0)
-        
-        # Generate results
-        results = []
-        for i in range(5):
-            relevance = random.uniform(70, 95) if use_quantum else random.uniform(60, 85)
-            results.append({
-                "id": i,
-                "title": f"Result {i+1} for {query}",
-                "content": f"This is a simulated search result for {query}.",
-                "relevance": relevance
-            })
-        
-        # Sort by relevance
-        results.sort(key=lambda x: x["relevance"], reverse=True)
-        
-        if use_quantum:
-            summary = f"Used quantum search algorithms (inspired by Grover's algorithm) with {self.n_qubits} qubits to search more efficiently."
-        else:
-            summary = "Used classical search algorithms to find relevant results."
-        
-        return {
-            "query": query,
-            "results": results,
-            "summary": summary,
-            "quantum_time": quantum_time,
-            "classical_time": classical_time,
-            "speedup": classical_time / quantum_time if use_quantum else 1.0
-        }
-    
-    def _simulate_factorization(self, task, use_quantum):
-        """Simulate quantum-enhanced factorization"""
-        # Extract number from task
-        import re
-        numbers = re.findall(r'\d+', task)
-        if not numbers:
-            number = 15  # Default if no number found
-        else:
-            number = int(numbers[0])
-        
-        # Get actual factors
-        factors = [i for i in range(1, number + 1) if number % i == 0]
-        
-        # Simulate time difference
-        classical_time = 0.01 * number  # Simplified classical time
-        quantum_time = 0.01 * (number ** 0.5) if use_quantum else classical_time
-        
-        if use_quantum:
-            explanation = f"Used quantum factorization algorithms (inspired by Shor's algorithm) with {self.n_qubits} qubits to find factors exponentially faster."
-        else:
-            explanation = "Used classical trial division to find all factors."
-        
-        return {
-            "number": number,
-            "factors": factors,
-            "explanation": explanation,
-            "quantum_time": quantum_time,
-            "classical_time": classical_time,
-            "speedup": classical_time / quantum_time if use_quantum else 1.0
-        }
-    
-    def _simulate_optimization(self, task, use_quantum):
-        """Simulate quantum-enhanced optimization"""
-        # Generate a random resource allocation problem
-        resources = ["CPU", "Memory", "Storage", "Network", "GPU"]
-        tasks = ["Task A", "Task B", "Task C", "Task D", "Task E"]
-        
-        # Random resource requirements
-        requirements = {}
-        for t in tasks:
-            requirements[t] = {res: random.randint(1, 10) for res in resources}
-        
-        # Random resource availability
-        availability = {res: random.randint(15, 30) for res in resources}
-        
-        # Time simulation
-        problem_size = len(resources) * len(tasks)
-        classical_time = 0.1 * (2 ** (problem_size / 5))  # Simplified exponential time
-        quantum_time = 0.1 * (problem_size ** 1.5) if use_quantum else classical_time  # Polynomial time
-        
-        # Random allocation
-        allocation = {}
-        for t in tasks:
-            allocation[t] = random.randint(1, 10)  # Higher = better allocation
-        
-        if use_quantum:
-            explanation = f"Used quantum optimization algorithms (inspired by QAOA) with {self.n_qubits} qubits to find optimal resource allocation."
-        else:
-            explanation = "Used classical optimization techniques to allocate resources."
-        
-        return {
-            "tasks": tasks,
-            "resources": resources,
-            "allocation": allocation,
-            "explanation": explanation,
-            "quantum_time": quantum_time,
-            "classical_time": classical_time,
-            "speedup": classical_time / quantum_time if use_quantum else 1.0
-        }
-    
-    def _simulate_general_task(self, task, use_quantum):
-        """Simulate a general task"""
-        # Time simulation
-        task_complexity = len(task) / 50
-        classical_time = task_complexity * random.uniform(0.5, 2.0)
-        quantum_time = classical_time / random.uniform(1.0, 2.0) if use_quantum else classical_time
-        
-        if use_quantum:
-            response = f"Processed your request using hybrid quantum-classical computing with {self.n_qubits} qubits for enhanced performance."
-        else:
-            response = "Processed your request using classical computing techniques."
-        
-        return {
-            "response": response,
-            "quantum_time": quantum_time,
-            "classical_time": classical_time,
-            "speedup": classical_time / quantum_time if use_quantum else 1.0
-        }
-    
-    def get_metrics(self):
-        """Get performance metrics"""
-        avg_speedup = 1.0
-        if self.quantum_tasks > 0 and self.total_quantum_time > 0:
-            avg_speedup = (self.total_classical_time / self.tasks_completed) / (self.total_quantum_time / self.quantum_tasks)
-        
-        return {
-            "tasks_completed": self.tasks_completed,
-            "quantum_tasks": self.quantum_tasks,
-            "classical_tasks": self.classical_tasks,
-            "avg_speedup": avg_speedup
-        }
-
 # Initialize session state
-if 'agent' not in st.session_state:
-    st.session_state.agent = QuantumAgent(use_quantum=True, n_qubits=8)
-
-if 'messages' not in st.session_state:
-    st.session_state.messages = []
-
-if 'current_tab' not in st.session_state:
+if 'quantum_core' not in st.session_state:
+    # Check if Azure environment variables are available
+    azure_available = (
+        os.environ.get("AZURE_QUANTUM_WORKSPACE_NAME") is not None and
+        os.environ.get("AZURE_QUANTUM_SUBSCRIPTION_ID") is not None and
+        os.environ.get("AZURE_QUANTUM_RESOURCE_GROUP") is not None and
+        os.environ.get("AZURE_QUANTUM_LOCATION") is not None
+    )
+    
+    st.session_state.quantum_core = QuantumCore(
+        use_quantum=True,
+        n_qubits=8,
+        use_azure=azure_available
+    )
+    
+    st.session_state.task_history = []
     st.session_state.current_tab = "home"
+    st.session_state.show_quantum_details = False
 
 # Sidebar
 with st.sidebar:
@@ -318,7 +150,7 @@ with st.sidebar:
     
     # Navigation
     st.markdown("### Navigation")
-    tabs = ["Home", "Chat with Q3A", "Applications", "Performance", "About"]
+    tabs = ["Home", "Quantum Search", "Quantum Factorization", "Quantum Optimization", "Task History", "About"]
     selected_tab = st.radio("Select Page", tabs)
     st.session_state.current_tab = selected_tab.lower().replace(" ", "_")
     
@@ -326,11 +158,18 @@ with st.sidebar:
     st.markdown("### Quantum Settings")
     use_quantum = st.checkbox("Use Quantum Acceleration", value=True)
     n_qubits = st.slider("Number of Qubits", min_value=4, max_value=29, value=8)
+    show_quantum_details = st.checkbox("Show Quantum Details", value=st.session_state.show_quantum_details)
     
-    # Update agent settings if changed
-    if use_quantum != st.session_state.agent.use_quantum or n_qubits != st.session_state.agent.n_qubits:
-        st.session_state.agent.use_quantum = use_quantum
-        st.session_state.agent.n_qubits = n_qubits
+    # Update settings if changed
+    if use_quantum != st.session_state.quantum_core.use_quantum:
+        st.session_state.quantum_core.use_quantum = use_quantum
+        st.info(f"Quantum acceleration {'enabled' if use_quantum else 'disabled'}")
+    
+    if n_qubits != st.session_state.quantum_core.n_qubits:
+        st.session_state.quantum_core.n_qubits = n_qubits
+        st.info(f"Number of qubits updated to {n_qubits}")
+    
+    st.session_state.show_quantum_details = show_quantum_details
     
     # About section
     st.markdown("---")
@@ -344,7 +183,7 @@ with st.sidebar:
 # Main header
 st.markdown('<div class="main-header">QUASAR: Quantum-Accelerated AI Agent</div>', unsafe_allow_html=True)
 
-# Display content based on selected tab
+# Home Page
 if st.session_state.current_tab == "home":
     st.markdown("## Welcome to QUASAR")
     
@@ -386,374 +225,573 @@ if st.session_state.current_tab == "home":
         </div>
         """, unsafe_allow_html=True)
     
-    # Framework components
-    st.markdown("### Framework Components")
+    # Framework description
+    st.markdown("### How QUASAR Works")
     
     st.markdown("""
-    - **Azure Quantum Integration**: Access to IonQ Aria-1 quantum hardware
-    - **PennyLane Circuits**: Quantum circuit design and optimization
-    - **Intelligent Task Router**: Automatic quantum/classical processing selection
-    - **Hybrid Computation Engine**: Coordinated quantum-classical processing
-    - **Interactive Web Interface**: Streamlit-based user experience
+    QUASAR combines the power of quantum computing with classical processing to deliver optimal performance:
+    
+    1. **Task Analysis**: Analyzes computational tasks to determine if quantum acceleration would be beneficial
+    2. **Quantum Routing**: Routes appropriate subtasks to quantum processors or simulators
+    3. **Hybrid Execution**: Executes tasks using the optimal mix of quantum and classical resources
+    4. **Result Integration**: Combines and interprets results from both processing paradigms
     """)
     
-    # Getting started
+    # Get started
     st.markdown("### Getting Started")
-    st.markdown("""
-    Select **Chat with Q3A** from the sidebar to start interacting with the Quantum-Accelerated AI Agent.
-    Try these tasks to experience quantum acceleration:
-    
-    1. Search for information with `search for quantum computing`
-    2. Factorize numbers with `factorize 15`
-    3. Solve optimization problems with `optimize resource allocation for 5 tasks`
-    """)
-
-elif st.session_state.current_tab == "chat_with_q3a":
-    st.markdown("## Chat with Q3A Agent")
     
     st.markdown("""
-    The Q3A Agent intelligently applies quantum acceleration to appropriate tasks, 
-    providing significant speedups for search, factorization, and optimization problems.
+    Select a capability from the sidebar to experience quantum acceleration in action:
+    
+    - **Quantum Search**: Experience quadratic speedup for database search (Grover's algorithm)
+    - **Quantum Factorization**: See exponential speedup for number factorization (Shor's algorithm)
+    - **Quantum Optimization**: Solve complex optimization problems with quantum advantage (QAOA)
     """)
     
-    # Display chat history
-    for message in st.session_state.messages:
-        if message["role"] == "user":
-            st.markdown(f"**You**: {message['content']}")
-        else:
-            st.markdown(f"**Q3A Agent**: {message['content']}")
+    # Azure Quantum status
+    azure_available = (
+        os.environ.get("AZURE_QUANTUM_WORKSPACE_NAME") is not None and
+        os.environ.get("AZURE_QUANTUM_SUBSCRIPTION_ID") is not None and
+        os.environ.get("AZURE_QUANTUM_RESOURCE_GROUP") is not None and
+        os.environ.get("AZURE_QUANTUM_LOCATION") is not None
+    )
     
-    # Chat input
-    user_input = st.text_input("Enter your task or question:", key="chat_input")
+    st.markdown("### Quantum Backends")
     
-    # Example prompts
-    with st.expander("Example prompts to try"):
+    if azure_available:
+        st.success("✅ Azure Quantum connection available")
+        st.markdown(f"Workspace: `{os.environ.get('AZURE_QUANTUM_WORKSPACE_NAME')}`")
+        st.markdown(f"Location: `{os.environ.get('AZURE_QUANTUM_LOCATION')}`")
+    else:
+        st.warning("⚠️ Azure Quantum connection not configured")
         st.markdown("""
-        - `search for quantum computing advantages`
-        - `factorize 15`
-        - `factorize 91`
-        - `optimize resource allocation for 5 tasks`
-        - `find information about quantum machine learning`
+        For Azure Quantum integration, set the following environment variables:
+        - `AZURE_QUANTUM_WORKSPACE_NAME`
+        - `AZURE_QUANTUM_SUBSCRIPTION_ID`
+        - `AZURE_QUANTUM_RESOURCE_GROUP`
+        - `AZURE_QUANTUM_LOCATION`
         """)
     
-    # Process user input
-    if user_input:
-        # Add user message to history
-        st.session_state.messages.append({"role": "user", "content": user_input})
+    # Display task history summary if available
+    if st.session_state.task_history:
+        st.markdown("### Recent Activity")
         
-        # Process the task
-        with st.spinner("Processing with quantum acceleration..."):
-            task_result = st.session_state.agent.process_task(user_input)
-            
-            # Generate a response based on task type
-            if task_result["task_type"] == "search":
-                result = task_result["result"]
-                response = f"**Search Results** ({result['quantum_time']:.2f}s vs classical {result['classical_time']:.2f}s)\n\n"
-                response += f"{result['summary']}\n\n"
-                
-                for i, r in enumerate(result['results'][:3]):
-                    response += f"**Result {i+1}**: {r['title']}\n"
-                    response += f"{r['content']}\n"
-                    response += f"*Relevance: {r['relevance']:.1f}%*\n\n"
-                
-                if task_result["use_quantum"]:
-                    response += f"*Quantum speedup: {result['speedup']:.2f}x faster*"
-                
-            elif task_result["task_type"] == "factorization":
-                result = task_result["result"]
-                response = f"**Factorization Results** ({result['quantum_time']:.2f}s vs classical {result['classical_time']:.2f}s)\n\n"
-                response += f"{result['explanation']}\n\n"
-                response += f"The factors of {result['number']} are: {', '.join(map(str, result['factors']))}\n\n"
-                
-                if task_result["use_quantum"]:
-                    response += f"*Quantum speedup: {result['speedup']:.2f}x faster*"
-                
-            elif task_result["task_type"] == "optimization":
-                result = task_result["result"]
-                response = f"**Optimization Results** ({result['quantum_time']:.2f}s vs classical {result['classical_time']:.2f}s)\n\n"
-                response += f"{result['explanation']}\n\n"
-                
-                response += "**Allocation:**\n"
-                for task, value in result['allocation'].items():
-                    response += f"- {task}: {value}\n"
-                
-                if task_result["use_quantum"]:
-                    response += f"\n*Quantum speedup: {result['speedup']:.2f}x faster*"
-                
-            else:  # General task
-                result = task_result["result"]
-                response = f"{result['response']}\n\n"
-                
-                if task_result["use_quantum"]:
-                    response += f"*Quantum speedup: {result['speedup']:.2f}x faster (processed in {result['quantum_time']:.2f}s vs classical {result['classical_time']:.2f}s)*"
+        # Count by task type
+        task_types = {}
+        for task in st.session_state.task_history:
+            task_type = task.get("task_type", "unknown")
+            if task_type not in task_types:
+                task_types[task_type] = 0
+            task_types[task_type] += 1
         
-        # Add agent response to history
-        st.session_state.messages.append({"role": "assistant", "content": response})
+        # Display summary
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Tasks", len(st.session_state.task_history))
+        with col2:
+            avg_speedup = sum(task.get("speedup", 1.0) for task in st.session_state.task_history) / max(1, len(st.session_state.task_history))
+            st.metric("Average Speedup", f"{avg_speedup:.2f}x")
+        with col3:
+            quantum_tasks = sum(1 for task in st.session_state.task_history if task.get("use_quantum", False))
+            st.metric("Quantum Tasks", f"{quantum_tasks}/{len(st.session_state.task_history)}")
         
-        # Clear input and rerun to show updated chat
-        st.rerun()
+        # Show last 3 tasks
+        st.markdown("#### Last 3 Tasks")
+        for task in st.session_state.task_history[-3:]:
+            if task.get("task_type") == "search":
+                st.markdown(f"🔍 Search: '{task.get('query', '')}' ({task.get('speedup', 1.0):.2f}x speedup)")
+            elif task.get("task_type") == "factorization":
+                st.markdown(f"🔢 Factorized: {task.get('number', 0)} ({task.get('speedup', 1.0):.2f}x speedup)")
+            elif task.get("task_type") == "optimization":
+                st.markdown(f"⚙️ Optimization: {task.get('problem_type', '')} ({task.get('speedup', 1.0):.2f}x speedup)")
 
-elif st.session_state.current_tab == "applications":
-    st.markdown("## Quantum Computing Applications")
+# Quantum Search Page
+elif st.session_state.current_tab == "quantum_search":
+    st.markdown("## Quantum-Enhanced Search")
     
     st.markdown("""
-    QUASAR enables significant advantages in multiple domains by leveraging quantum computing
-    for specific computational bottlenecks.
+    Quantum search algorithms offer a quadratic speedup over classical search algorithms
+    for unstructured data. This is based on Grover's algorithm, which provides an O(√N) 
+    search time compared to the classical O(N).
     """)
     
-    # Application areas with expandable sections
-    with st.expander("Enhanced Search & Pattern Recognition", expanded=True):
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/d/df/Quantum_circuit_trap.svg/440px-Quantum_circuit_trap.svg.png", width=150)
-        with col2:
-            st.markdown("""
-            ### Quantum-Enhanced Search
-            
-            QUASAR implements algorithms inspired by Grover's quantum search, providing a quadratic speedup
-            for unstructured search problems.
-            
-            **Key Advantage**: O(√N) vs O(N) for database search operations
-            
-            **Applications**:
-            - Faster database search
-            - Improved pattern recognition
-            - Enhanced information retrieval
-            """)
-        
-        # Search performance chart
-        st.markdown("#### Search Performance Comparison")
-        data_sizes = [10, 100, 1000, 10000, 100000]
-        classical = [size/10 for size in data_sizes]
-        quantum = [(size ** 0.5)/10 for size in data_sizes]
-        
-        chart_data = pd.DataFrame({
-            'Database Size': data_sizes,
-            'Classical (seconds)': classical,
-            'Quantum (seconds)': quantum
-        })
-        st.line_chart(chart_data, x='Database Size')
+    # Search UI
+    search_query = st.text_input("Enter search query:", "quantum computing")
     
-    with st.expander("Factorization & Cryptography", expanded=False):
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/5/5a/Shor%27s_algorithm_circuit.svg/440px-Shor%27s_algorithm_circuit.svg.png", width=150)
-        with col2:
-            st.markdown("""
-            ### Quantum Factorization
-            
-            QUASAR implements algorithms inspired by Shor's quantum factorization approach, providing
-            exponential speedup for integer factorization.
-            
-            **Key Advantage**: Polynomial vs exponential time complexity
-            
-            **Applications**:
-            - Breaking RSA encryption (demonstrating need for quantum-resistant cryptography)
-            - Faster factorization for mathematical applications
-            - Quantum-resistant encryption development
-            """)
-        
-        # Factorization chart
-        st.markdown("#### Factorization Time Comparison")
-        bit_sizes = [4, 8, 16, 32, 64, 128, 256]
-        classical = [0.001 * (2 ** (bits/4)) for bits in bit_sizes]  # Exponential
-        quantum = [0.001 * (bits ** 2) for bits in bit_sizes]  # Polynomial
-        
-        chart_data = pd.DataFrame({
-            'Number Size (bits)': bit_sizes,
-            'Classical (seconds)': classical,
-            'Quantum (seconds)': quantum
-        })
-        st.line_chart(chart_data, x='Number Size (bits)')
-    
-    with st.expander("Optimization & Resource Allocation", expanded=False):
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/f/f5/Quantum_circuit_compilation_for_nisq_fig_1.png/440px-Quantum_circuit_compilation_for_nisq_fig_1.png", width=150)
-        with col2:
-            st.markdown("""
-            ### Quantum Optimization
-            
-            QUASAR implements approaches inspired by the Quantum Approximate Optimization Algorithm (QAOA),
-            providing significant speedups for complex optimization problems.
-            
-            **Key Advantage**: Polynomial speedup for many NP-hard problems
-            
-            **Applications**:
-            - Resource allocation
-            - Scheduling optimization
-            - Portfolio optimization
-            - Supply chain management
-            """)
-        
-        # Optimization chart
-        st.markdown("#### Optimization Performance")
-        problem_sizes = [5, 10, 15, 20, 25, 30]
-        classical_quality = [0.95, 0.9, 0.85, 0.76, 0.68, 0.55]  # Quality degrades with size
-        quantum_quality = [0.98, 0.96, 0.94, 0.92, 0.9, 0.88]  # Better quality maintenance
-        
-        chart_data = pd.DataFrame({
-            'Problem Size': problem_sizes,
-            'Classical Quality': classical_quality,
-            'Quantum Quality': quantum_quality
-        })
-        st.line_chart(chart_data, x='Problem Size')
-
-elif st.session_state.current_tab == "performance":
-    st.markdown("## Quantum Performance Analysis")
-    
-    # Get metrics
-    metrics = st.session_state.agent.get_metrics()
-    
-    # Display metric cards
-    st.markdown("### Overall Metrics")
-    col1, col2, col3, col4 = st.columns(4)
-    
+    # Database size selector (simulated)
+    col1, col2 = st.columns([2, 1])
     with col1:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value">{metrics['tasks_completed']}</div>
-            <div class="metric-label">Tasks Completed</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
+        database_size = st.slider("Simulated Database Size:", 
+                                 min_value=100, 
+                                 max_value=10000, 
+                                 value=1000, 
+                                 step=100)
     with col2:
         st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-value">{metrics['quantum_tasks']}</div>
-            <div class="metric-label">Quantum Tasks</div>
+            <div class="metric-value">{database_size}</div>
+            <div class="metric-label">Database Records</div>
         </div>
         """, unsafe_allow_html=True)
     
-    with col3:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value">{metrics['classical_tasks']}</div>
-            <div class="metric-label">Classical Tasks</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col4:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value">{metrics['avg_speedup']:.2f}x</div>
-            <div class="metric-label">Average Speedup</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Task history if available
-    if st.session_state.agent.task_history:
-        st.markdown("### Task History")
-        
-        for task in st.session_state.agent.task_history:
-            with st.expander(f"{task['task_type'].capitalize()}: {task['task']}", expanded=False):
-                st.write(f"**Type**: {task['task_type']}")
-                st.write(f"**Quantum Acceleration**: {'Yes' if task['use_quantum'] else 'No'}")
-                st.write(f"**Execution Time**: {task['execution_time']:.4f}s")
+    # Search button
+    if st.button("Search with Quantum Acceleration"):
+        with st.spinner("Processing search with quantum acceleration..."):
+            # Execute search
+            search_result = st.session_state.quantum_core.run_quantum_search(
+                search_query, database_size
+            )
+            
+            # Add to history
+            task_record = {
+                "id": len(st.session_state.task_history) + 1,
+                "timestamp": datetime.now().isoformat(),
+                "task_type": "search",
+                "query": search_query,
+                "database_size": database_size,
+                "use_quantum": st.session_state.quantum_core.use_quantum,
+                "results": search_result.get("results", []),
+                "classical_time": search_result.get("classical_time", 0),
+                "quantum_time": search_result.get("quantum_time", 0),
+                "speedup": search_result.get("speedup", 1.0)
+            }
+            st.session_state.task_history.append(task_record)
+            
+            # Display results
+            st.success(f"Search completed with {task_record['speedup']:.2f}x speedup!")
+            
+            # Performance comparison
+            st.subheader("Performance Comparison")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Classical Time", f"{task_record['classical_time']:.4f}s")
+            with col2:
+                st.metric("Quantum Time", f"{task_record['quantum_time']:.4f}s")
+            with col3:
+                st.metric("Speedup", f"{task_record['speedup']:.2f}x")
+            
+            # Result explanation
+            st.markdown(f"#### Search Summary")
+            st.markdown(search_result.get("summary", ""))
+            
+            # Display results
+            st.markdown("#### Search Results")
+            for i, result in enumerate(search_result.get("results", [])[:5]):
+                with st.expander(f"Result {i+1}: {result.get('title', '')}", expanded=i < 3):
+                    st.markdown(f"**Content**: {result.get('content', '')}")
+                    st.progress(result.get("relevance", 0) / 100)
+                    st.markdown(f"Relevance: {result.get('relevance', 0):.1f}%")
+            
+            # Show quantum details if enabled
+            if st.session_state.show_quantum_details:
+                st.markdown("#### Quantum Implementation Details")
+                st.markdown("""
+                **Grover's Algorithm Overview**:
                 
-                # Display specific result details based on task type
-                if task['task_type'] == "search":
-                    st.write(f"**Query**: {task['result']['query']}")
-                    st.write("**Top Results**:")
-                    for i, r in enumerate(task['result']['results'][:3]):
-                        st.write(f"{i+1}. {r['title']} (Relevance: {r['relevance']:.1f}%)")
+                1. Initialize qubits in superposition
+                2. Apply oracle for the search condition
+                3. Apply diffusion operator
+                4. Repeat steps 2-3 approximately √N times
+                5. Measure to get the result
                 
-                elif task['task_type'] == "factorization":
-                    st.write(f"**Number**: {task['result']['number']}")
-                    st.write(f"**Factors**: {', '.join(map(str, task['result']['factors']))}")
+                This provides a quadratic speedup over classical search algorithms.
+                """)
                 
-                elif task['task_type'] == "optimization":
-                    st.write("**Allocation**:")
-                    for k, v in task['result']['allocation'].items():
-                        st.write(f"- {k}: {v}")
+                # Add visualization or detailed metrics
+                st.markdown("##### Quantum Advantage Scaling")
+                sizes = [10, 100, 1000, 10000, 100000]
+                classical = [size/1000 for size in sizes]
+                quantum = [np.sqrt(size)/1000 for size in sizes]
                 
-                # Performance comparison
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Quantum Time (s)", f"{task['result']['quantum_time']:.4f}")
-                with col2:
-                    st.metric("Classical Time (s)", f"{task['result']['classical_time']:.4f}")
-                with col3:
-                    speedup = task['result']['speedup']
-                    st.metric("Speedup", f"{speedup:.2f}x")
-    else:
-        st.info("No tasks have been processed yet. Try using the Chat interface to perform tasks.")
-    
-    # Quantum advantage explanation
-    st.markdown("### Understanding Quantum Advantage")
+                chart_data = pd.DataFrame({
+                    'Database Size': sizes,
+                    'Classical (seconds)': classical,
+                    'Quantum (seconds)': quantum
+                })
+                st.line_chart(chart_data, x='Database Size')
+
+# Quantum Factorization Page
+elif st.session_state.current_tab == "quantum_factorization":
+    st.markdown("## Quantum Factorization")
     
     st.markdown("""
-    Quantum computing offers different types of speedups for different problem classes:
-    
-    - **Quadratic Speedup**: For search and related problems (Grover's algorithm)
-    - **Exponential Speedup**: For factorization and similar problems (Shor's algorithm)
-    - **Polynomial Speedup**: For many optimization problems (QAOA, quantum annealing)
-    
-    The QUASAR framework intelligently routes tasks to quantum or classical processors based on these
-    expected speedups.
+    Quantum factorization algorithms, such as Shor's algorithm, offer an exponential speedup
+    over classical factorization methods. This enables efficient factorization of large numbers,
+    which has significant implications for cryptography and number theory.
     """)
     
-    # Scaling comparison
-    st.markdown("### Quantum vs Classical Scaling")
-    scaling_type = st.radio("Select scaling type:", 
-                           ["Search (Quadratic Speedup)", 
-                            "Factorization (Exponential Speedup)",
-                            "Optimization (Polynomial Speedup)"])
+    # Factorization UI
+    number_to_factorize = st.number_input("Enter a number to factorize:", 
+                                         min_value=2, 
+                                         max_value=10000000, 
+                                         value=15)
     
-    if scaling_type == "Search (Quadratic Speedup)":
-        x = list(range(10, 1010, 100))
-        classical = [n / 10 for n in x]
-        quantum = [(n ** 0.5) / 10 for n in x]
-        
-        data = pd.DataFrame({
-            "Database Size": x,
-            "Classical": classical,
-            "Quantum": quantum
-        })
-        
-        st.line_chart(data, x="Database Size")
-        
-        st.markdown("""
-        **Search Quantum Advantage**: Grover's algorithm provides a quadratic speedup (O(√N) vs O(N))
-        for unstructured search problems. This becomes increasingly significant as the database size grows.
-        """)
-        
-    elif scaling_type == "Factorization (Exponential Speedup)":
-        x = [8, 16, 32, 64, 128, 256, 512, 1024]
-        classical = [0.001 * (2 ** (bits/8)) for bits in x]
-        quantum = [0.001 * (bits ** 2) for bits in x]
-        
-        data = pd.DataFrame({
-            "Number Size (bits)": x,
-            "Classical": classical,
-            "Quantum": quantum
-        })
-        
-        st.line_chart(data, x="Number Size (bits)")
-        
-        st.markdown("""
-        **Factorization Quantum Advantage**: Shor's algorithm provides an exponential speedup for integer
-        factorization, transforming the problem from intractable to tractable for large numbers.
-        """)
-        
-    else:  # Optimization
-        x = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
-        classical = [0.001 * (1.5 ** var) for var in x]
-        quantum = [0.001 * (1.2 ** var) for var in x]
-        
-        data = pd.DataFrame({
-            "Problem Size": x,
-            "Classical": classical,
-            "Quantum": quantum
-        })
-        
-        st.line_chart(data, x="Problem Size")
-        
-        st.markdown("""
-        **Optimization Quantum Advantage**: Quantum optimization algorithms can provide significant
-        speedups for certain optimization problems, with the advantage growing as problem complexity increases.
-        """)
+    # Factorize button
+    if st.button("Factorize with Quantum Acceleration"):
+        with st.spinner("Processing factorization with quantum acceleration..."):
+            # Execute factorization
+            factorization_result = st.session_state.quantum_core.run_quantum_factorization(
+                number_to_factorize
+            )
+            
+            # Add to history
+            task_record = {
+                "id": len(st.session_state.task_history) + 1,
+                "timestamp": datetime.now().isoformat(),
+                "task_type": "factorization",
+                "number": number_to_factorize,
+                "use_quantum": st.session_state.quantum_core.use_quantum,
+                "factors": factorization_result.get("factors", []),
+                "prime_factors": factorization_result.get("prime_factors", []),
+                "classical_time": factorization_result.get("classical_time", 0),
+                "quantum_time": factorization_result.get("quantum_time", 0),
+                "speedup": factorization_result.get("speedup", 1.0)
+            }
+            st.session_state.task_history.append(task_record)
+            
+            # Display results
+            st.success(f"Factorization completed with {task_record['speedup']:.2f}x speedup!")
+            
+            # Performance comparison
+            st.subheader("Performance Comparison")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Classical Time", f"{task_record['classical_time']:.4f}s")
+            with col2:
+                st.metric("Quantum Time", f"{task_record['quantum_time']:.4f}s")
+            with col3:
+                st.metric("Speedup", f"{task_record['speedup']:.2f}x")
+            
+            # Factorization results
+            st.markdown("#### Factorization Results")
+            
+            # All factors
+            st.markdown(f"**All Factors**: {', '.join(map(str, factorization_result.get('factors', [])))}")
+            
+            # Prime factorization
+            prime_factors = factorization_result.get('prime_factors', [])
+            prime_factorization = " × ".join(map(str, prime_factors))
+            st.markdown(f"**Prime Factorization**: {number_to_factorize} = {prime_factorization}")
+            
+            # Explanation
+            st.markdown("#### Explanation")
+            st.markdown(factorization_result.get("explanation", ""))
+            
+            # Show quantum details if enabled
+            if st.session_state.show_quantum_details and factorization_result.get("circuit_results") is not None:
+                st.markdown("#### Quantum Circuit Results")
+                
+                # Display circuit probabilities as a bar chart
+                circuit_results = factorization_result.get("circuit_results")
+                if circuit_results:
+                    states = [f"{i:0{len(circuit_results)-1}b}" for i in range(len(circuit_results))]
+                    probs_df = pd.DataFrame({
+                        "State": states,
+                        "Probability": circuit_results
+                    })
+                    st.bar_chart(probs_df.set_index("State"))
+                
+                st.markdown("##### Shor's Algorithm Overview")
+                st.markdown("""
+                Shor's algorithm for factoring an integer N:
+                
+                1. Choose a random number a < N
+                2. Compute gcd(a, N). If it's not 1, we've found a factor.
+                3. Use quantum period finding to find the period r of f(x) = a^x mod N
+                4. If r is odd, go back to step 1
+                5. Compute gcd(a^(r/2) ± 1, N) to find the factors
+                
+                The quantum part (period finding) gives the exponential speedup over classical methods.
+                """)
+                
+                # Add visualization of speedup
+                st.markdown("##### Quantum Advantage Scaling")
+                bit_sizes = [8, 16, 32, 64, 128, 256, 512, 1024]
+                classical = [0.001 * (2 ** (bits/8)) for bits in bit_sizes]
+                quantum = [0.001 * (bits ** 2) for bits in bit_sizes]
+                
+                chart_data = pd.DataFrame({
+                    'Number Size (bits)': bit_sizes,
+                    'Classical (seconds)': classical,
+                    'Quantum (seconds)': quantum
+                })
+                st.line_chart(chart_data, x='Number Size (bits)')
 
+# Quantum Optimization Page
+elif st.session_state.current_tab == "quantum_optimization":
+    st.markdown("## Quantum Optimization")
+    
+    st.markdown("""
+    Quantum optimization algorithms, such as the Quantum Approximate Optimization Algorithm (QAOA),
+    offer significant speedups for solving complex optimization problems. These algorithms leverage
+    quantum superposition to explore multiple solutions simultaneously.
+    """)
+    
+    # Optimization UI
+    st.subheader("Optimization Problem Configuration")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        problem_type = st.selectbox("Problem Type:", 
+                                  ["allocation", "scheduling", "generic"])
+    with col2:
+        problem_size = st.slider("Problem Size:", 
+                               min_value=2, 
+                               max_value=20, 
+                               value=5)
+    
+    # Optimize button
+    if st.button("Optimize with Quantum Acceleration"):
+        with st.spinner("Processing optimization with quantum acceleration..."):
+            # Execute optimization
+            optimization_result = st.session_state.quantum_core.run_quantum_optimization(
+                problem_size, problem_type
+            )
+            
+            # Add to history
+            task_record = {
+                "id": len(st.session_state.task_history) + 1,
+                "timestamp": datetime.now().isoformat(),
+                "task_type": "optimization",
+                "problem_type": problem_type,
+                "problem_size": problem_size,
+                "use_quantum": st.session_state.quantum_core.use_quantum,
+                "solution": optimization_result.get("solution", {}),
+                "objective_value": optimization_result.get("objective_value", 0),
+                "classical_time": optimization_result.get("classical_time", 0),
+                "quantum_time": optimization_result.get("quantum_time", 0),
+                "speedup": optimization_result.get("speedup", 1.0)
+            }
+            st.session_state.task_history.append(task_record)
+            
+            # Display results
+            st.success(f"Optimization completed with {task_record['speedup']:.2f}x speedup!")
+            
+            # Performance comparison
+            st.subheader("Performance Comparison")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Classical Time", f"{task_record['classical_time']:.4f}s")
+            with col2:
+                st.metric("Quantum Time", f"{task_record['quantum_time']:.4f}s")
+            with col3:
+                st.metric("Speedup", f"{task_record['speedup']:.2f}x")
+            
+            # Problem description
+            st.markdown("#### Problem Description")
+            
+            if problem_type == "allocation":
+                # Resource allocation problem
+                st.markdown(f"**Resource Allocation Problem with {problem_size} resources and {problem_size} tasks**")
+                
+                # Display problem details
+                with st.expander("Problem Details", expanded=False):
+                    st.markdown("**Resources:**")
+                    for resource in optimization_result.get("problem", {}).get("resources", []):
+                        st.markdown(f"- {resource}")
+                    
+                    st.markdown("**Tasks:**")
+                    for task in optimization_result.get("problem", {}).get("tasks", []):
+                        st.markdown(f"- {task}")
+                    
+                    st.markdown("**Requirements:**")
+                    for task, reqs in optimization_result.get("problem", {}).get("requirements", {}).items():
+                        st.markdown(f"- {task}: {reqs}")
+            
+            elif problem_type == "scheduling":
+                # Job scheduling problem
+                st.markdown(f"**Job Scheduling Problem with {problem_size} jobs**")
+                
+                # Display problem details
+                with st.expander("Problem Details", expanded=False):
+                    st.markdown("**Jobs:**")
+                    for job in optimization_result.get("problem", {}).get("jobs", []):
+                        st.markdown(f"- {job}")
+                    
+                    st.markdown("**Machines:**")
+                    for machine in optimization_result.get("problem", {}).get("machines", []):
+                        st.markdown(f"- {machine}")
+            
+            else:
+                # Generic optimization problem
+                st.markdown(f"**Generic Optimization Problem with {problem_size} variables**")
+                
+                # Display problem details
+                with st.expander("Problem Details", expanded=False):
+                    st.markdown("**Variables:**")
+                    for var in optimization_result.get("problem", {}).get("variables", []):
+                        st.markdown(f"- {var}")
+                    
+                    st.markdown("**Constraints:**")
+                    for i, constraint in enumerate(optimization_result.get("problem", {}).get("constraints", [])):
+                        st.markdown(f"- Constraint {i+1}: {constraint}")
+            
+            # Solution
+            st.markdown("#### Optimization Solution")
+            
+            # Display solution
+            solution = optimization_result.get("solution", {})
+            objective = optimization_result.get("objective_value", 0)
+            
+            st.markdown(f"**Objective Value**: {objective:.4f}")
+            
+            # Display solution details
+            st.markdown("**Solution Details**:")
+            
+            if problem_type == "allocation":
+                # Resource allocation solution
+                for task, value in solution.items():
+                    st.markdown(f"- {task}: {value}")
+            
+            elif problem_type == "scheduling":
+                # Job scheduling solution
+                for job, details in solution.items():
+                    st.markdown(f"- {job}: {details}")
+            
+            else:
+                # Generic optimization solution
+                for var, value in solution.items():
+                    st.markdown(f"- {var}: {value:.4f}")
+            
+            # Explanation
+            st.markdown("#### Explanation")
+            st.markdown(optimization_result.get("explanation", ""))
+            
+            # Show quantum details if enabled
+            if st.session_state.show_quantum_details:
+                st.markdown("#### Quantum Implementation Details")
+                
+                if optimization_result.get("circuit_results") is not None:
+                    # Display circuit probabilities as a bar chart
+                    circuit_results = optimization_result.get("circuit_results")
+                    if circuit_results:
+                        states = [f"{i:0{len(circuit_results)-1}b}" for i in range(len(circuit_results))]
+                        probs_df = pd.DataFrame({
+                            "State": states,
+                            "Probability": circuit_results
+                        })
+                        st.bar_chart(probs_df.set_index("State"))
+                
+                st.markdown("##### QAOA Overview")
+                st.markdown("""
+                The Quantum Approximate Optimization Algorithm (QAOA) works as follows:
+                
+                1. Encode the optimization problem into a cost Hamiltonian
+                2. Prepare an initial state in superposition
+                3. Alternately apply the cost Hamiltonian and mixing Hamiltonian
+                4. Optimize the circuit parameters to minimize the expected cost
+                5. Measure to obtain a solution
+                
+                QAOA can provide polynomial speedup for many NP-hard problems.
+                """)
+                
+                # Add visualization of scaling
+                st.markdown("##### Optimization Performance by Problem Size")
+                sizes = [5, 10, 15, 20, 25, 30, 35, 40]
+                classical = [0.001 * (1.5 ** size) for size in sizes]
+                quantum = [0.001 * (size ** 2.5) for size in sizes]
+                
+                chart_data = pd.DataFrame({
+                    'Problem Size': sizes,
+                    'Classical (seconds)': classical,
+                    'Quantum (seconds)': quantum
+                })
+                st.line_chart(chart_data, x='Problem Size')
+
+# Task History Page
+elif st.session_state.current_tab == "task_history":
+    st.markdown("## Task History")
+    
+    if not st.session_state.task_history:
+        st.info("No tasks have been executed yet. Try using the Quantum Search, Factorization, or Optimization features.")
+    else:
+        # Summary metrics
+        n_tasks = len(st.session_state.task_history)
+        avg_speedup = sum(task.get("speedup", 1.0) for task in st.session_state.task_history) / n_tasks
+        quantum_tasks = sum(1 for task in st.session_state.task_history if task.get("use_quantum", False))
+        
+        # Display summary
+        st.markdown("### Summary Statistics")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Tasks", n_tasks)
+        with col2:
+            st.metric("Quantum Tasks", f"{quantum_tasks}/{n_tasks}")
+        with col3:
+            st.metric("Classical Tasks", f"{n_tasks - quantum_tasks}/{n_tasks}")
+        with col4:
+            st.metric("Average Speedup", f"{avg_speedup:.2f}x")
+        
+        # Group by task type
+        task_types = {}
+        for task in st.session_state.task_history:
+            task_type = task.get("task_type", "unknown")
+            if task_type not in task_types:
+                task_types[task_type] = []
+            task_types[task_type].append(task)
+        
+        # Display task history by type
+        for task_type, tasks in task_types.items():
+            st.markdown(f"### {task_type.capitalize()} Tasks ({len(tasks)})")
+            
+            for i, task in enumerate(tasks):
+                # Create a descriptive title based on task type
+                if task_type == "search":
+                    title = f"Search for '{task.get('query', '')}'"
+                elif task_type == "factorization":
+                    title = f"Factorize {task.get('number', 0)}"
+                elif task_type == "optimization":
+                    title = f"{task.get('problem_type', '').capitalize()} Optimization (size {task.get('problem_size', 0)})"
+                else:
+                    title = f"Task {task.get('id', i+1)}"
+                
+                # Add speedup to title
+                title += f" ({task.get('speedup', 1.0):.2f}x speedup)"
+                
+                with st.expander(title, expanded=i == len(tasks) - 1):
+                    # Common metrics
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Classical Time", f"{task.get('classical_time', 0):.4f}s")
+                    with col2:
+                        st.metric("Quantum Time", f"{task.get('quantum_time', 0):.4f}s")
+                    with col3:
+                        st.metric("Speedup", f"{task.get('speedup', 1.0):.2f}x")
+                    
+                    # Task-specific details
+                    if task_type == "search":
+                        st.markdown(f"**Query**: {task.get('query', '')}")
+                        st.markdown(f"**Database Size**: {task.get('database_size', 0)}")
+                        
+                        # Results
+                        st.markdown("**Top Results**:")
+                        for j, result in enumerate(task.get("results", [])[:3]):
+                            st.markdown(f"{j+1}. {result.get('title', '')} ({result.get('relevance', 0):.1f}%)")
+                    
+                    elif task_type == "factorization":
+                        st.markdown(f"**Number**: {task.get('number', 0)}")
+                        st.markdown(f"**Factors**: {', '.join(map(str, task.get('factors', [])))}")
+                        st.markdown(f"**Prime Factors**: {', '.join(map(str, task.get('prime_factors', [])))}")
+                    
+                    elif task_type == "optimization":
+                        st.markdown(f"**Problem Type**: {task.get('problem_type', '')}")
+                        st.markdown(f"**Problem Size**: {task.get('problem_size', 0)}")
+                        st.markdown(f"**Objective Value**: {task.get('objective_value', 0):.4f}")
+                        
+                        # Solution summary
+                        st.markdown("**Solution Overview**:")
+                        solution = task.get("solution", {})
+                        if len(solution) <= 5:
+                            for key, value in solution.items():
+                                st.markdown(f"- {key}: {value}")
+                        else:
+                            st.markdown(f"Solution with {len(solution)} variables")
+                    
+                    # Timestamp
+                    st.markdown(f"**Timestamp**: {task.get('timestamp', '')}")
+
+# About Page
 elif st.session_state.current_tab == "about":
     st.markdown("## About QUASAR Framework")
     
@@ -769,6 +807,26 @@ elif st.session_state.current_tab == "about":
     - **Azure Quantum Support**: For access to IonQ Aria-1 quantum hardware
     - **Hybrid Computation Engine**: For intelligent quantum/classical task routing
     - **Quantum Algorithms**: For search, factorization, and optimization
+    
+    #### Quantum Advantages
+    
+    1. **Quantum Search (Grover's Algorithm)**
+       - **Classical Complexity**: O(N)
+       - **Quantum Complexity**: O(√N)
+       - **Speedup**: Quadratic
+       - **Applications**: Database search, pattern matching, cryptanalysis
+    
+    2. **Quantum Factorization (Shor's Algorithm)**
+       - **Classical Complexity**: O(2^(n^(1/3)))
+       - **Quantum Complexity**: O(n^3)
+       - **Speedup**: Exponential
+       - **Applications**: Cryptography, number theory
+    
+    3. **Quantum Optimization (QAOA)**
+       - **Classical Complexity**: Often exponential for exact solutions
+       - **Quantum Complexity**: Polynomial for approximate solutions
+       - **Speedup**: Polynomial to exponential depending on problem
+       - **Applications**: Resource allocation, scheduling, logistics, portfolio optimization
     
     #### Framework Architecture
     
@@ -804,19 +862,18 @@ elif st.session_state.current_tab == "about":
                                        └───────────────┘
     ```
     
-    #### Future Roadmap
+    #### References
     
-    QUASAR is continually evolving with planned enhancements:
-    
-    - Support for additional quantum hardware providers
-    - Enhanced quantum circuit optimization for NISQ devices
-    - Quantum-enhanced machine learning models
-    - Distributed quantum-classical computation
+    - Grover, L. K. (1996). A fast quantum mechanical algorithm for database search.
+    - Shor, P. W. (1994). Algorithms for quantum computation: discrete logarithms and factoring.
+    - Farhi, E., Goldstone, J., & Gutmann, S. (2014). A Quantum Approximate Optimization Algorithm.
     
     #### Acknowledgments
     
     QUASAR builds upon research from Microsoft Quantum, IBM Quantum, Google Quantum AI, and the broader
     quantum computing research community.
+    
+    © 2025 Quantum Labs
     """)
 
 # Run the app
