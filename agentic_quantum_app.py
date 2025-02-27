@@ -935,14 +935,20 @@ def display_web_interface():
         st.markdown("""
         This tab allows you to give the agent tasks to perform autonomously on the web, powered by quantum-enhanced AI.
         The agent will use quantum algorithms to accelerate the decision-making process and search optimization.
+        
+        ✨ **Powered by True Agency**: The agent can proactively search, navigate websites, and interact with elements 
+        to accomplish tasks without step-by-step instructions.
         """)
         
         # Task input
         task = st.text_area("Enter a task for the agent to perform:", 
-                            placeholder="For example: 'Find the latest news about quantum computing' or 'Research the top AI companies'")
+                            placeholder="For example: 'Find the latest news about quantum computing' or 'Research the top AI companies in 2025'")
         
         use_quantum = st.checkbox("Use quantum acceleration", value=True, 
                                  help="Enables quantum algorithms to optimize search and decision making")
+        
+        autonomous_mode = st.checkbox("Full Autonomous Mode", value=True,
+                                    help="Allows the agent to make autonomous decisions about navigation and task execution")
         
         col1, col2 = st.columns(2)
         with col1:
@@ -951,47 +957,101 @@ def display_web_interface():
                     # Store the task in session state
                     st.session_state.current_task = task
                     
-                    # In a real implementation, we would use our autonomous agent system to:
-                    # 1. Break down the task into subtasks
-                    # 2. Create a plan for completing the task
-                    # 3. Execute the steps to complete the task
-                    
-                    # For this demo, we'll simulate the process by:
-                    # 1. Extracting key terms
-                    # 2. Building a search URL
-                    # 3. Visiting the page
-                    
-                    # Extract key terms and build search URL
-                    search_terms = task.replace(" ", "+")
-                    search_url = f"https://www.google.com/search?q={search_terms}"
-                    
-                    # Visit the search URL
-                    result = st.session_state.web_agent.visit(search_url)
-                    
-                    if result["success"]:
-                        # Add to history
-                        st.session_state.web_history.append({
-                            "url": result["url"],
-                            "title": result["title"],
-                            "screenshot": result["screenshot"],
-                            "timestamp": result["timestamp"],
-                            "task": task
-                        })
+                    if autonomous_mode:
+                        # Use our enhanced autonomous agent with proactive web search capabilities
+                        try:
+                            # We'll use our autonomous agent to process the task
+                            result = asyncio.run(st.session_state.agent.process_task(task))
+                            
+                            # Store the task result
+                            st.session_state.task_results[task] = result
+                            
+                            # Check if there are web search results
+                            web_results = result.get("result", {}).get("web_search_results", [])
+                            if web_results:
+                                for web_result in web_results:
+                                    # Add to history
+                                    if {"url": web_result.get("url", ""), "title": web_result.get("title", "")} not in st.session_state.web_history:
+                                        st.session_state.web_history.append({
+                                            "url": web_result.get("url", ""),
+                                            "title": web_result.get("title", ""),
+                                            "timestamp": datetime.now().isoformat(),
+                                            "task": task,
+                                            "quantum_score": web_result.get("quantum_relevance_score", 0)
+                                        })
+                            
+                            # Store in quantum results for easy access
+                            st.session_state.quantum_results["task_result"] = result
+                            
+                            # Display confirmation
+                            st.success(f"Task completed successfully with quantum acceleration!")
+                            st.info("Check the results below and in the Task History.")
+                            
+                            # Display basic result information
+                            if web_results:
+                                st.subheader("Web Search Results:")
+                                for i, web_result in enumerate(web_results):
+                                    with st.expander(f"Result {i+1}: {web_result.get('title', 'Unknown')}"):
+                                        st.write(f"URL: {web_result.get('url', 'Unknown')}")
+                                        st.write(f"Quantum Relevance Score: {web_result.get('quantum_relevance_score', 0):.2f}")
+                                        if "top_terms" in web_result:
+                                            st.write("Key Topics:")
+                                            for term, score in list(web_result.get("top_terms", {}).items())[:5]:
+                                                st.write(f"- {term}: {score:.2f}")
+                        except Exception as e:
+                            st.error(f"Error during autonomous execution: {str(e)}")
+                            # Fall back to simpler approach
+                            st.warning("Falling back to basic web search...")
+                            
+                            # Extract key terms and build search URL
+                            search_terms = task.replace(" ", "+")
+                            search_url = f"https://www.google.com/search?q={search_terms}"
+                            
+                            # Visit the search URL using web agent directly
+                            result = st.session_state.web_agent.visit(search_url)
+                            
+                            if result.get("success", False):
+                                # Add to history
+                                st.session_state.web_history.append({
+                                    "url": result.get("url", ""),
+                                    "title": result.get("title", ""),
+                                    "screenshot": result.get("screenshot", ""),
+                                    "timestamp": result.get("timestamp", datetime.now().isoformat()),
+                                    "task": task
+                                })
                         
-                        # Store as task result
-                        st.session_state.quantum_results["task_result"] = {
-                            "task": task,
-                            "url": result["url"],
-                            "title": result["title"],
-                            "screenshot": result["screenshot"],
-                            "timestamp": result["timestamp"],
-                            "use_quantum": use_quantum,
-                            "success": True
-                        }
-                        
-                        st.success(f"Task initiated! Visited: {result['title']}")
                     else:
-                        st.error(f"Failed to start task: {result.get('error', 'Unknown error')}")
+                        # Simple search mode - directly use web agent
+                        search_terms = task.replace(" ", "+")
+                        search_url = f"https://www.google.com/search?q={search_terms}"
+                        
+                        # Visit the search URL
+                        result = st.session_state.web_agent.visit(search_url)
+                        
+                        if result.get("success", False):
+                            # Add to history
+                            st.session_state.web_history.append({
+                                "url": result.get("url", ""),
+                                "title": result.get("title", ""),
+                                "screenshot": result.get("screenshot", ""),
+                                "timestamp": result.get("timestamp", datetime.now().isoformat()),
+                                "task": task
+                            })
+                            
+                            # Store as task result
+                            st.session_state.quantum_results["task_result"] = {
+                                "task": task,
+                                "url": result["url"],
+                                "title": result["title"],
+                                "screenshot": result["screenshot"],
+                                "timestamp": result["timestamp"],
+                                "use_quantum": use_quantum,
+                                "success": True
+                            }
+                            
+                            st.success(f"Task initiated! Visited: {result['title']}")
+                        else:
+                            st.error(f"Failed to start task: {result.get('error', 'Unknown error')}")
         
         with col2:
             if st.button("Analyze Results", key="analyze_results"):
