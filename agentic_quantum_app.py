@@ -30,6 +30,13 @@ from agent_core import (
     LearningSystem
 )
 
+# Import our true web agent capabilities
+from web_interaction import (
+    WebAgent,
+    QuantumEnhancedWebAgent,
+    create_quantum_web_integration
+)
+
 # Setup PennyLane quantum computing
 try:
     import pennylane as qml
@@ -393,6 +400,12 @@ def initialize_session_state():
     if 'quantum_simulator' not in st.session_state:
         st.session_state.quantum_simulator = None
     
+    if 'web_agent' not in st.session_state:
+        st.session_state.web_agent = None
+        
+    if 'web_history' not in st.session_state:
+        st.session_state.web_history = []
+    
     if 'n_qubits' not in st.session_state:
         st.session_state.n_qubits = 4
     
@@ -426,10 +439,20 @@ def initialize_agent():
         # Create the quantum simulator
         quantum_simulator = QuantumSimulator(n_qubits=st.session_state.n_qubits)
         
+        # Create the quantum-enhanced web agent (this is the real web interaction capability)
+        web_integration = create_quantum_web_integration(n_qubits=st.session_state.n_qubits)
+        web_agent = None
+        if web_integration["success"]:
+            web_agent = web_integration["agent"]
+            logger.info(f"Quantum-enhanced web agent initialized with {st.session_state.n_qubits} qubits")
+        else:
+            logger.error(f"Failed to initialize web agent: {web_integration.get('error', 'Unknown error')}")
+        
         # Store in session state
         st.session_state.agent = agent
         st.session_state.quantum_builder = quantum_builder
         st.session_state.quantum_simulator = quantum_simulator
+        st.session_state.web_agent = web_agent
         st.session_state.agent_initialized = True
         
         # Add initialization to chat history
@@ -839,6 +862,151 @@ def display_about():
         else:
             st.markdown("- Status: Not Initialized ✗")
 
+def display_web_interface():
+    """Display web browsing interface with quantum-enhanced capabilities"""
+    st.header("Quantum-Enhanced Web Browsing")
+    
+    if not st.session_state.agent_initialized:
+        st.warning("Please initialize the agent first.")
+        return
+    
+    if not st.session_state.web_agent:
+        st.error("Web agent could not be initialized. Please check console logs for details.")
+        return
+    
+    # URL input
+    st.subheader("Visit Website")
+    url = st.text_input("Enter a URL:", "https://www.example.com")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("Visit Website"):
+            with st.spinner("Loading website..."):
+                # Visit the site
+                result = st.session_state.web_agent.visit(url)
+                
+                if result["success"]:
+                    # Add to history
+                    st.session_state.web_history.append({
+                        "url": result["url"],
+                        "title": result["title"],
+                        "screenshot": result["screenshot"],
+                        "timestamp": result["timestamp"]
+                    })
+                    
+                    st.success(f"Loaded: {result['title']}")
+                else:
+                    st.error(f"Failed to load website: {result.get('error', 'Unknown error')}")
+    
+    with col2:
+        if st.button("Quantum Analyze Page"):
+            with st.spinner("Analyzing page with quantum-enhanced algorithms..."):
+                # Make sure we're viewing a page first
+                if not st.session_state.web_history:
+                    st.error("Please visit a website first")
+                else:
+                    # Perform quantum-enhanced analysis
+                    result = st.session_state.web_agent.quantum_analyze_page()
+                    
+                    if result["success"]:
+                        st.session_state.quantum_results["web_analysis"] = result
+                        st.success("Page analyzed with quantum enhancement")
+                    else:
+                        st.error(f"Failed to analyze page: {result.get('error', 'Unknown error')}")
+    
+    # Display current page info
+    if st.session_state.web_history:
+        current_page = st.session_state.web_history[-1]
+        
+        st.subheader("Current Page")
+        st.write(f"**Title:** {current_page['title']}")
+        st.write(f"**URL:** {current_page['url']}")
+        
+        # Display screenshot
+        if current_page["screenshot"]:
+            st.image(f"data:image/png;base64,{current_page['screenshot']}", caption="Screenshot", use_column_width=True)
+        
+        # Display quantum analysis results if available
+        if "web_analysis" in st.session_state.quantum_results:
+            analysis = st.session_state.quantum_results["web_analysis"]
+            if analysis["success"]:
+                st.subheader("Quantum Analysis Results")
+                
+                # Display top words
+                if "top_words" in analysis:
+                    st.write("**Top Words (Quantum Ranked):**")
+                    # Convert dict to list of tuples and sort by value
+                    top_words = sorted(analysis["top_words"].items(), key=lambda x: x[1], reverse=True)[:10]
+                    for word, count in top_words:
+                        st.write(f"- {word}: {count}")
+                
+                # Display quantum circuit diagram
+                if "circuit_diagram" in analysis:
+                    st.subheader("Quantum Circuit Used for Analysis")
+                    st.image(f"data:image/png;base64,{analysis['circuit_diagram']}", 
+                            caption="Quantum Circuit Diagram", use_column_width=True)
+                
+                # Display quantum results
+                if "quantum_results" in analysis:
+                    st.subheader("Quantum Measurement Results")
+                    results = analysis["quantum_results"]
+                    
+                    # Plot the results
+                    fig, ax = plt.subplots(figsize=(8, 3))
+                    ax.bar(range(len(results)), [abs(val) for val in results])
+                    ax.set_xlabel("Qubit")
+                    ax.set_ylabel("Absolute Value")
+                    ax.set_title("Quantum Analysis Results")
+                    ax.set_xticks(range(len(results)))
+                    st.pyplot(fig)
+    
+    # Search within page
+    st.subheader("Quantum-Enhanced Page Search")
+    search_query = st.text_input("Search for text in page:", "")
+    
+    if st.button("Search Page") and search_query:
+        with st.spinner("Searching with quantum enhancement..."):
+            # Make sure we're viewing a page first
+            if not st.session_state.web_history:
+                st.error("Please visit a website first")
+            else:
+                # Perform quantum-enhanced search
+                result = st.session_state.web_agent.quantum_enhanced_search(search_query)
+                
+                if result["success"]:
+                    st.session_state.quantum_results["web_search"] = result
+                    st.success(f"Found {len(result['results'])} matches")
+                    
+                    # Display search results
+                    if result["results"]:
+                        st.write("**Search Results:**")
+                        for i, item in enumerate(result["results"]):
+                            st.write(f"{i+1}. **{item['tag']}**: {item['text'][:100]}... (score: {item['score']:.2f})")
+                    else:
+                        st.info("No matches found")
+                    
+                    # Display circuit diagram if available
+                    if "circuit_diagram" in result:
+                        st.subheader("Quantum Circuit Used for Search")
+                        st.image(f"data:image/png;base64,{result['circuit_diagram']}", 
+                                caption="Quantum Circuit Diagram", use_column_width=True)
+                else:
+                    st.error(f"Search failed: {result.get('error', 'Unknown error')}")
+    
+    # Browse history
+    if len(st.session_state.web_history) > 1:
+        st.subheader("Browsing History")
+        
+        # Show last 5 pages (excluding current)
+        history = st.session_state.web_history[:-1][-5:]
+        
+        for i, page in enumerate(history):
+            if st.button(f"{i+1}. {page['title'][:50]}...", key=f"history_{i}"):
+                # This is a simplified approach - in a real application, we would keep the actual history objects
+                st.info(f"Would navigate to historical page: {page['url']}")
+
+
 def main():
     """Main application function"""
     # Initialize the session state
@@ -878,11 +1046,21 @@ def main():
     
     # Navigation
     st.sidebar.header("Navigation")
-    page = st.sidebar.radio("Go to", ["Agent Interface", "Quantum Circuits", "Factorization", "Search", "Optimization", "About"])
+    page = st.sidebar.radio("Go to", [
+        "Agent Interface", 
+        "Web Browsing", 
+        "Quantum Circuits", 
+        "Factorization", 
+        "Search", 
+        "Optimization", 
+        "About"
+    ])
     
     # Display the selected page
     if page == "Agent Interface":
         display_agent_controls()
+    elif page == "Web Browsing":
+        display_web_interface()
     elif page == "Quantum Circuits":
         display_circuit_controls()
     elif page == "Factorization":
