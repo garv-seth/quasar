@@ -1,5 +1,6 @@
 {pkgs}: {
   deps = [
+    pkgs.libxcrypt
     pkgs.spdlog
     pkgs.nlohmann_json
     pkgs.muparserx
