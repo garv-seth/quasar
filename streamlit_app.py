@@ -1189,15 +1189,25 @@ elif st.session_state.current_tab == "ai_agent":
                                 st.markdown(f"I'm analyzing your request to determine if quantum computing would be beneficial...")
                                 
                                 # Generate response with AI
-                                ai_response = asyncio.run(run_async(
-                                    st.session_state.ai_engine.clients["claude"].messages.create if st.session_state.ai_engine.use_claude else st.session_state.ai_engine.clients["openai"].chat.completions.create,
-                                    model=st.session_state.ai_engine.claude_model if st.session_state.ai_engine.use_claude else st.session_state.ai_engine.openai_model,
-                                    max_tokens=1000,
-                                    messages=[
-                                        {"role": "system", "content": "You are a quantum computing expert assistant. You can help explain quantum computing concepts and answer questions about quantum algorithms, applications, and hardware. If presented with a computational task, you should consider whether quantum computing offers an advantage."},
-                                        {"role": "user", "content": user_input}
-                                    ]
-                                ))
+                                messages = [
+                                    {"role": "system", "content": "You are a quantum computing expert assistant. You can help explain quantum computing concepts and answer questions about quantum algorithms, applications, and hardware. If presented with a computational task, you should consider whether quantum computing offers an advantage."},
+                                    {"role": "user", "content": user_input}
+                                ]
+                                
+                                if st.session_state.ai_engine.use_claude:
+                                    ai_response = asyncio.run(run_async(
+                                        st.session_state.ai_engine.clients["claude"].messages.create,
+                                        model=st.session_state.ai_engine.claude_model,
+                                        max_tokens=1000,
+                                        messages=messages
+                                    ))
+                                else:
+                                    ai_response = asyncio.run(run_async(
+                                        st.session_state.ai_engine.clients["openai"].chat.completions.create,
+                                        model=st.session_state.ai_engine.openai_model,
+                                        max_tokens=1000,
+                                        messages=messages
+                                    ))
                                 
                                 if st.session_state.ai_engine.use_claude:
                                     quantum_response = ai_response.content[0].text
@@ -1208,15 +1218,25 @@ elif st.session_state.current_tab == "ai_agent":
                         
                         else:
                             # Not a quantum task, use regular AI response
-                            ai_response = asyncio.run(run_async(
-                                st.session_state.ai_engine.clients["claude"].messages.create if st.session_state.ai_engine.use_claude else st.session_state.ai_engine.clients["openai"].chat.completions.create,
-                                model=st.session_state.ai_engine.claude_model if st.session_state.ai_engine.use_claude else st.session_state.ai_engine.openai_model,
-                                max_tokens=1000,
-                                messages=[
-                                    {"role": "system", "content": "You are a quantum computing expert assistant. You can help explain quantum computing concepts and answer questions about quantum algorithms, applications, and hardware. If presented with a computational task, you should consider whether quantum computing offers an advantage."},
-                                    {"role": "user", "content": user_input}
-                                ]
-                            ))
+                            messages = [
+                                {"role": "system", "content": "You are a quantum computing expert assistant. You can help explain quantum computing concepts and answer questions about quantum algorithms, applications, and hardware. If presented with a computational task, you should consider whether quantum computing offers an advantage."},
+                                {"role": "user", "content": user_input}
+                            ]
+                            
+                            if st.session_state.ai_engine.use_claude:
+                                ai_response = asyncio.run(run_async(
+                                    st.session_state.ai_engine.clients["claude"].messages.create,
+                                    model=st.session_state.ai_engine.claude_model,
+                                    max_tokens=1000,
+                                    messages=messages
+                                ))
+                            else:
+                                ai_response = asyncio.run(run_async(
+                                    st.session_state.ai_engine.clients["openai"].chat.completions.create,
+                                    model=st.session_state.ai_engine.openai_model,
+                                    max_tokens=1000,
+                                    messages=messages
+                                ))
                             
                             if st.session_state.ai_engine.use_claude:
                                 quantum_response = ai_response.content[0].text
