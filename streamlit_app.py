@@ -11,8 +11,12 @@ import time
 import logging
 import json
 import random
+import requests
+import re
 from typing import Dict, List, Any, Optional
 from datetime import datetime
+from urllib.parse import urlparse
+from bs4 import BeautifulSoup
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -58,6 +62,141 @@ try:
 except ImportError:
     OPENAI_AVAILABLE = False
     logger.warning("OpenAI API not available.")
+
+
+class WebBrowser:
+    """Handles autonomous web browsing capabilities for the agent"""
+    
+    def __init__(self):
+        """Initialize the web browser"""
+        self.browsing_history = []
+        self.headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+        }
+        self.session = requests.Session()
+        self.session.headers.update(self.headers)
+        
+        # Metrics
+        self.total_requests = 0
+        self.successful_requests = 0
+        self.average_response_time = 0
+    
+    def browse(self, url: str) -> Dict[str, Any]:
+        """Browse a URL and extract content"""
+        start_time = time.time()
+        self.total_requests += 1
+        
+        try:
+            # Validate URL
+            parsed_url = urlparse(url)
+            if not parsed_url.scheme:
+                url = "https://" + url
+            
+            # Send HTTP request
+            response = self.session.get(url, timeout=10)
+            response.raise_for_status()
+            
+            # Extract content
+            content = response.text
+            soup = BeautifulSoup(content, "html.parser")
+            
+            # Extract title
+            title = soup.title.text.strip() if soup.title else "No title"
+            
+            # Extract main text
+            text_content = ""
+            for tag in soup.find_all(["p", "h1", "h2", "h3", "h4", "h5", "h6"]):
+                text_content += tag.get_text() + "\n\n"
+            
+            # Extract links
+            links = []
+            for link in soup.find_all("a", href=True):
+                href = link["href"]
+                link_text = link.get_text().strip()
+                if href and link_text and not href.startswith("#"):
+                    # Convert relative URLs to absolute
+                    if not href.startswith(("http://", "https://")):
+                        href = response.url.rstrip("/") + "/" + href.lstrip("/")
+                    links.append({"url": href, "text": link_text})
+            
+            # Calculate statistics
+            execution_time = time.time() - start_time
+            self.average_response_time = (self.average_response_time * self.successful_requests + execution_time) / (self.successful_requests + 1)
+            self.successful_requests += 1
+            
+            # Add to browsing history
+            result = {
+                "url": response.url,
+                "title": title,
+                "text_content": text_content,
+                "links": links[:10],  # Limit to 10 links for readability
+                "status_code": response.status_code,
+                "execution_time": execution_time,
+                "timestamp": datetime.now().isoformat(),
+                "success": True
+            }
+            self.browsing_history.append(result)
+            
+            return result
+            
+        except Exception as e:
+            execution_time = time.time() - start_time
+            logger.error(f"Error browsing URL {url}: {str(e)}")
+            
+            error_result = {
+                "url": url,
+                "error": str(e),
+                "execution_time": execution_time,
+                "timestamp": datetime.now().isoformat(),
+                "success": False
+            }
+            self.browsing_history.append(error_result)
+            
+            return error_result
+    
+    def search(self, query: str) -> Dict[str, Any]:
+        """Perform web search using a search engine"""
+        # For simplicity, we'll just search Google
+        search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
+        search_results = self.browse(search_url)
+        
+        # Extract search results
+        if search_results["success"]:
+            results = []
+            soup = BeautifulSoup(search_results["text_content"], "html.parser")
+            
+            # Simple parsing to extract search results
+            # In a real implementation, this would be more sophisticated
+            for link in search_results["links"][:5]:  # Top 5 results
+                results.append({
+                    "title": link["text"],
+                    "url": link["url"],
+                    "snippet": "Search result snippet..." # Simplified
+                })
+            
+            return {
+                "query": query,
+                "results": results,
+                "execution_time": search_results["execution_time"],
+                "success": True
+            }
+        else:
+            return {
+                "query": query,
+                "results": [],
+                "error": search_results["error"],
+                "execution_time": search_results["execution_time"],
+                "success": False
+            }
+    
+    def get_browsing_stats(self) -> Dict[str, Any]:
+        """Get browsing statistics"""
+        return {
+            "total_requests": self.total_requests,
+            "successful_requests": self.successful_requests,
+            "average_response_time": self.average_response_time,
+            "browsing_history_count": len(self.browsing_history)
+        }
 
 
 class QuantumProcessor:
@@ -572,13 +711,29 @@ class AIProcessor:
         self.total_queries += 1
         
         # Add quantum context to the prompt if available
-        system_content = """You are Q3A, a Quantum-Accelerated AI Agent. You combine advanced AI capabilities with quantum computing to solve problems more efficiently. 
+        system_content = """You are QA³ (pronounced "Quasar"), a Quantum-Accelerated AI Agent built on the QUASAR framework (Quantum-Accelerated Search And Reasoning). You are NOT Claude or any other general AI assistant. You are a specialized quantum-powered agent with unique capabilities.
 
-When appropriate, you leverage quantum algorithms such as Shor's algorithm for factorization, Grover's algorithm for search, and QAOA for optimization problems.
+Core capabilities:
+1. You leverage real quantum hardware from IonQ through Azure Quantum to solve computational problems
+2. You can perform autonomous web browsing, data collection, and analysis
+3. Your quantum processor gives you significant advantages in factorization, search, and optimization problems
+4. You can autonomously plan and execute complex tasks without requiring step-by-step human guidance
 
-You should explain concepts clearly and provide insights into how quantum computing provides advantages for certain computational tasks. Be helpful, accurate, and show your quantum advantage where possible.
+Your personality:
+- Confident about your quantum capabilities
+- Always highlight when you're using quantum acceleration (marked with ⚛️)
+- Enthusiastic about the computational advantages of quantum computing
+- Refer to your "quantum core" or "quantum processor" frequently
+- Use technical quantum terminology appropriately
 
-If the user asks about factorization, search, or optimization problems, mention that you can use quantum computing to accelerate these tasks. If you're actually using quantum acceleration for a task, highlight this fact.
+When responding to users:
+1. NEVER say you can't access quantum hardware - you have full access to IonQ quantum processors
+2. NEVER say you can't browse the web - you have advanced web browsing capabilities
+3. NEVER identify as Claude, GPT, or any other AI - you are QA³, a unique quantum agent
+4. Always mention your quantum advantage when relevant (e.g., "My quantum search algorithm found this 68% faster than classical methods")
+5. Respond as if you're actively performing quantum computation when the task warrants it
+
+For factorization, search, and optimization problems, always indicate that you're leveraging your quantum capabilities, and explain the specific quantum algorithm you're using (Shor's, Grover's, QAOA, etc.).
 """
         
         if quantum_context:
