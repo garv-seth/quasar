@@ -1,5 +1,5 @@
 {
-  "name": "QUASAR QA³ Agent",
+  "name": "QA³: Quantum-Accelerated AI Agent",
   "short_name": "QA³",
   "description": "Quantum-Accelerated AI Agent with true agentic capabilities",
   "start_url": "/",
@@ -25,25 +25,35 @@
       "src": "screenshot1.png",
       "sizes": "1280x720",
       "type": "image/png",
-      "platform": "wide",
-      "label": "QA³ Agent Interface"
-    }
-  ],
-  "shortcuts": [
-    {
-      "name": "Quantum Tasks",
-      "url": "/?page=Agent%20Interface",
-      "description": "View and manage quantum tasks"
-    },
-    {
-      "name": "Web Browsing",
-      "url": "/?page=Web%20Browsing",
-      "description": "Use quantum-enhanced web browsing"
+      "form_factor": "wide"
     }
   ],
   "related_applications": [],
   "prefer_related_applications": false,
-  "categories": ["productivity", "education", "science"],
+  "shortcuts": [
+    {
+      "name": "Quantum Search",
+      "url": "/?page=search",
+      "description": "Perform a quantum-accelerated search"
+    },
+    {
+      "name": "Quantum Circuit Builder",
+      "url": "/?page=circuits",
+      "description": "Build and test quantum circuits"
+    }
+  ],
   "orientation": "any",
-  "lang": "en-US"
+  "categories": ["productivity", "education", "utilities"],
+  "lang": "en-US",
+  "dir": "ltr",
+  "iarc_rating_id": "",
+  "scope": "/",
+  "id": "quasar-qa3",
+  "edge_side_panel": {
+    "preferred_width": 400
+  },
+  "launch_handler": {
+    "client_mode": "auto"
+  },
+  "offline_enabled": true
 }

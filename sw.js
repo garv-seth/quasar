@@ -1,68 +1,85 @@
-// QUASAR QA³ Service Worker
+/**
+ * QUASAR QA³: Service Worker
+ * Provides offline capabilities and resource caching for the PWA
+ */
 
-const CACHE_NAME = 'quasar-qa3-cache-v1';
-const RUNTIME_CACHE = 'quasar-qa3-runtime-v1';
+const CACHE_NAME = 'quasar-qa3-v1';
+const OFFLINE_URL = 'offline.html';
 
-// Resources to pre-cache
-const PRECACHE_URLS = [
+// Resources that should be pre-cached (important app files)
+const PRE_CACHE_RESOURCES = [
   '/',
-  '/offline.html',
+  '/manifest.json',
   '/icon-192.png',
   '/icon-512.png',
-  '/manifest.json',
+  '/screenshot1.png',
+  '/offline.html',
   '/pwa.js'
 ];
 
-// Lifecycle: Install
+// Resources that should use a cache-first strategy
+const CACHE_FIRST_RESOURCES = [
+  '/icon-192.png',
+  '/icon-512.png',
+  '/screenshot1.png',
+  '/manifest.json'
+];
+
+// Installation event - cache critical assets
 self.addEventListener('install', event => {
-  console.log('[Service Worker] Installing Service Worker...', event);
+  console.log('[Service Worker] Installation started');
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
         console.log('[Service Worker] Pre-caching offline resources');
-        return cache.addAll(PRECACHE_URLS);
+        return cache.addAll(PRE_CACHE_RESOURCES);
       })
       .then(() => {
-        console.log('[Service Worker] Successfully installed and cached resources');
+        console.log('[Service Worker] Installation completed');
         return self.skipWaiting();
       })
   );
 });
 
-// Lifecycle: Activate
+// Activation event - clean up old caches
 self.addEventListener('activate', event => {
-  console.log('[Service Worker] Activating Service Worker...', event);
-  
-  // Clean up old caches
+  console.log('[Service Worker] Activation started');
   event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.filter(cacheName => {
-          return cacheName !== CACHE_NAME && cacheName !== RUNTIME_CACHE;
-        }).map(cacheName => {
-          console.log('[Service Worker] Deleting old cache:', cacheName);
-          return caches.delete(cacheName);
-        })
-      );
-    }).then(() => self.clients.claim())
+    caches.keys()
+      .then(cacheNames => {
+        return Promise.all(
+          cacheNames
+            .filter(cacheName => cacheName !== CACHE_NAME)
+            .map(cacheName => {
+              console.log('[Service Worker] Removing old cache:', cacheName);
+              return caches.delete(cacheName);
+            })
+        );
+      })
+      .then(() => {
+        console.log('[Service Worker] Activation completed');
+        return self.clients.claim();
+      })
   );
 });
 
-// Fetch handler with network-first strategy for API requests and cache-first for assets
+// Fetch event - handle resource requests
 self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
+  // Skip non-GET requests
+  if (event.request.method !== 'GET') return;
   
-  // For API requests, use network-first strategy
-  if (url.pathname.startsWith('/api/')) {
-    event.respondWith(networkFirstStrategy(event.request));
-  } 
-  // For quantum calculation results, use network-first strategy
-  else if (url.pathname.includes('quantum') || url.pathname.includes('calculation')) {
-    event.respondWith(networkFirstStrategy(event.request));
+  // Handle API calls separately
+  if (event.request.url.includes('/api/')) {
+    return handleApiRequest(event);
   }
-  // For main page and static assets, use cache-first strategy
-  else {
+  
+  // Determine the caching strategy based on the request
+  if (CACHE_FIRST_RESOURCES.some(resource => event.request.url.endsWith(resource))) {
+    // Cache-first for static assets like images and the manifest
     event.respondWith(cacheFirstStrategy(event.request));
+  } else {
+    // Network-first for everything else (dynamic content)
+    event.respondWith(networkFirstStrategy(event.request));
   }
 });
 
@@ -75,172 +92,272 @@ async function cacheFirstStrategy(request) {
   
   try {
     const networkResponse = await fetch(request);
-    // Cache successful responses for future use
-    if (networkResponse.ok) {
-      const cache = await caches.open(RUNTIME_CACHE);
+    if (networkResponse && networkResponse.status === 200) {
+      const cache = await caches.open(CACHE_NAME);
       cache.put(request, networkResponse.clone());
     }
     return networkResponse;
   } catch (error) {
-    console.log('[Service Worker] Network request failed, serving offline page');
-    // If the request is for a page (HTML), serve the offline page
-    if (request.headers.get('Accept').includes('text/html')) {
-      return caches.match('/offline.html');
-    }
-    
-    // For other resources, simply return an error response
-    return new Response('Network error happened', {
-      status: 408,
-      headers: { 'Content-Type': 'text/plain' }
-    });
+    console.error('[Service Worker] Cache-first fetch failed:', error);
+    return new Response(
+      'Network error. Please check your connection.',
+      { status: 408, headers: { 'Content-Type': 'text/plain' } }
+    );
   }
 }
 
-// Network-first strategy for API requests
+// Network-first strategy for dynamic content
 async function networkFirstStrategy(request) {
   try {
     // Try network first
     const networkResponse = await fetch(request);
-    
-    // Cache successful responses
-    if (networkResponse.ok) {
-      const cache = await caches.open(RUNTIME_CACHE);
+    if (networkResponse && networkResponse.status === 200) {
+      // Cache the successful response
+      const cache = await caches.open(CACHE_NAME);
       cache.put(request, networkResponse.clone());
+      return networkResponse;
     }
-    
-    return networkResponse;
+    throw new Error('Network response was not valid');
   } catch (error) {
-    console.log('[Service Worker] Network request failed, checking cache');
+    console.log('[Service Worker] Network request failed, using cache:', error);
     
-    // Fall back to cache
+    // If network fails, try from cache
     const cachedResponse = await caches.match(request);
     if (cachedResponse) {
       return cachedResponse;
     }
     
-    // If not in cache and for a page, serve the offline page
-    if (request.headers.get('Accept').includes('text/html')) {
-      return caches.match('/offline.html');
+    // If not in cache and it's a page navigation, show the offline page
+    if (request.mode === 'navigate') {
+      const cache = await caches.open(CACHE_NAME);
+      return cache.match(OFFLINE_URL);
     }
     
-    // For API requests, return a JSON error
-    return new Response(JSON.stringify({
-      error: 'You are offline and this data is not cached.',
-      offline: true,
-      timestamp: new Date().toISOString()
-    }), {
-      status: 503,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    // Otherwise return an error
+    return new Response(
+      'Network error and resource not in cache.',
+      { status: 404, headers: { 'Content-Type': 'text/plain' } }
+    );
   }
 }
 
-// Handle background sync
-self.addEventListener('sync', event => {
-  console.log('[Service Worker] Background Sync Event:', event.tag);
+// Handle API requests, with background sync for offline usage
+function handleApiRequest(event) {
+  // Attempt online operation first
+  event.respondWith(
+    fetch(event.request.clone())
+      .catch(error => {
+        // If offline, store the request for later sync
+        return storeRequestForSync(event.request)
+          .then(() => {
+            return new Response(
+              JSON.stringify({ 
+                offline: true, 
+                message: 'Your request was saved and will be processed when you are back online.' 
+              }),
+              { 
+                status: 503, 
+                headers: { 'Content-Type': 'application/json' } 
+              }
+            );
+          });
+      })
+  );
+}
+
+// Store a request for later sync
+async function storeRequestForSync(request) {
+  // Clone the request to read its body
+  const requestClone = request.clone();
+  let requestData;
   
+  try {
+    // Get the request data
+    const body = await requestClone.text();
+    requestData = {
+      url: request.url,
+      method: request.method,
+      headers: Array.from(request.headers.entries()),
+      body: body,
+      timestamp: Date.now()
+    };
+    
+    // Open the database
+    const db = await openDatabase();
+    
+    // Add the request to the offline queue
+    const tx = db.transaction('offlineRequests', 'readwrite');
+    const store = tx.objectStore('offlineRequests');
+    await store.add(requestData);
+    await tx.complete;
+    
+    console.log('[Service Worker] Request stored for later sync:', requestData.url);
+    
+    // Register a sync if supported
+    if ('sync' in self.registration) {
+      await self.registration.sync.register('sync-quantum-tasks');
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('[Service Worker] Failed to store request:', error);
+    return false;
+  }
+}
+
+// Open the IndexedDB database
+function openDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('QUASAR_QA3_DB', 1);
+    
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains('offlineRequests')) {
+        db.createObjectStore('offlineRequests', { keyPath: 'timestamp' });
+      }
+      if (!db.objectStoreNames.contains('quantumTasks')) {
+        db.createObjectStore('quantumTasks', { keyPath: 'id' });
+      }
+    };
+    
+    request.onsuccess = (event) => {
+      resolve(event.target.result);
+    };
+    
+    request.onerror = (event) => {
+      console.error('[Service Worker] Database error:', event.target.error);
+      reject(event.target.error);
+    };
+  });
+}
+
+// Handle sync event
+self.addEventListener('sync', event => {
   if (event.tag === 'sync-quantum-tasks') {
     event.waitUntil(syncQuantumTasks());
   }
 });
 
-// Sync quantum tasks that were created offline
+// Process stored requests when online
 async function syncQuantumTasks() {
-  // This would ideally get from IndexedDB
-  const tasksToSync = await getOfflineTasks();
-  
-  // Process each offline task
-  const syncPromises = tasksToSync.map(async task => {
-    try {
-      const response = await fetch('/api/quantum/tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(task)
-      });
-      
-      if (response.ok) {
-        // Task synced successfully, remove from offline queue
-        await removeOfflineTask(task.id);
+  console.log('[Service Worker] Syncing quantum tasks');
+  try {
+    const db = await openDatabase();
+    const tasks = await getOfflineTasks(db);
+    
+    console.log(`[Service Worker] Found ${tasks.length} tasks to sync`);
+    
+    // Process each stored request
+    for (const task of tasks) {
+      try {
+        const response = await fetch(task.url, {
+          method: task.method,
+          headers: task.headers.reduce((obj, [key, value]) => {
+            obj[key] = value;
+            return obj;
+          }, {}),
+          body: task.method !== 'GET' ? task.body : undefined
+        });
+        
+        if (response.ok) {
+          // Request succeeded, remove from store
+          const tx = db.transaction('offlineRequests', 'readwrite');
+          const store = tx.objectStore('offlineRequests');
+          await store.delete(task.timestamp);
+          await tx.complete;
+          console.log('[Service Worker] Successfully synced task:', task.url);
+          
+          // Show notification if supported
+          if ('Notification' in self) {
+            self.registration.showNotification('QUASAR QA³', {
+              body: 'Your quantum task has been processed successfully.',
+              icon: '/icon-192.png',
+              badge: '/icon-192.png'
+            });
+          }
+        }
+      } catch (error) {
+        console.error('[Service Worker] Failed to sync task:', task.url, error);
       }
-      
-      return response.ok;
-    } catch (error) {
-      console.error('[Service Worker] Failed to sync task:', error);
-      return false;
     }
+    
+    return true;
+  } catch (error) {
+    console.error('[Service Worker] Failed to sync quantum tasks:', error);
+    return false;
+  }
+}
+
+// Get stored offline tasks
+async function getOfflineTasks(db) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('offlineRequests', 'readonly');
+    const store = tx.objectStore('offlineRequests');
+    const request = store.getAll();
+    
+    request.onsuccess = () => {
+      resolve(request.result);
+    };
+    
+    request.onerror = (event) => {
+      reject(event.target.error);
+    };
   });
-  
-  // Wait for all sync operations to complete
-  return Promise.all(syncPromises);
-}
-
-// Simulate getting offline tasks (would use IndexedDB in a real implementation)
-async function getOfflineTasks() {
-  // Simulate IndexedDB read
-  return [];
-}
-
-// Simulate removing an offline task (would use IndexedDB in a real implementation)
-async function removeOfflineTask(taskId) {
-  // Simulate IndexedDB delete
-  return true;
 }
 
 // Handle push notifications
 self.addEventListener('push', event => {
-  console.log('[Service Worker] Push Received:', event);
+  if (!event.data) {
+    console.warn('[Service Worker] Push received but no data');
+    return;
+  }
   
-  let notificationData = {
-    title: 'QA³ Notification',
-    body: 'Something happened in your QUASAR QA³ application.',
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
-    data: {
-      url: '/'
-    }
-  };
-  
-  // Try to parse the data if available
-  if (event.data) {
-    try {
-      const data = event.data.json();
-      notificationData = { ...notificationData, ...data };
-    } catch (e) {
-      console.error('Failed to parse push data:', e);
-    }
+  let notification;
+  try {
+    notification = event.data.json();
+  } catch (e) {
+    notification = {
+      title: 'QUASAR QA³',
+      body: event.data.text(),
+      icon: '/icon-192.png'
+    };
   }
   
   event.waitUntil(
-    self.registration.showNotification(notificationData.title, {
-      body: notificationData.body,
-      icon: notificationData.icon,
-      badge: notificationData.badge,
-      vibrate: [100, 50, 100],
-      data: notificationData.data
+    self.registration.showNotification(notification.title, {
+      body: notification.body,
+      icon: notification.icon || '/icon-192.png',
+      badge: '/icon-192.png',
+      data: notification.data
     })
   );
 });
 
 // Handle notification clicks
 self.addEventListener('notificationclick', event => {
-  console.log('[Service Worker] Notification click:', event);
   event.notification.close();
   
-  // Open the target URL when the user clicks the notification
+  let url = '/';
   if (event.notification.data && event.notification.data.url) {
-    event.waitUntil(
-      clients.matchAll({ type: 'window' }).then(windowClients => {
-        // Check if there's already a window open that we can focus
-        for (let client of windowClients) {
-          if (client.url === event.notification.data.url && 'focus' in client) {
+    url = event.notification.data.url;
+  }
+  
+  event.waitUntil(
+    clients.matchAll({ type: 'window' })
+      .then(windowClients => {
+        // Check if there is already a window open
+        for (const client of windowClients) {
+          if (client.url === url && 'focus' in client) {
             return client.focus();
           }
         }
-        // Open a new window otherwise
+        
+        // If no window is open, open a new one
         if (clients.openWindow) {
-          return clients.openWindow(event.notification.data.url);
+          return clients.openWindow(url);
         }
       })
-    );
-  }
+  );
 });
+
+console.log('[Service Worker] Script loaded');

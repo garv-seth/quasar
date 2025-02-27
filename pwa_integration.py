@@ -8,318 +8,286 @@ enabling offline access, notifications, and installations.
 import os
 import json
 import base64
+from pathlib import Path
+from typing import Dict, Any, Optional, List
+
 import streamlit as st
-from datetime import datetime
+from streamlit.components.v1 import html
 
 def initialize_pwa():
     """Initialize PWA components for Streamlit"""
-    # Create directories if they don't exist
-    os.makedirs(".streamlit", exist_ok=True)
+    # Add service worker registration and PWA scripts to the head
+    manifest_link = '<link rel="manifest" href="/manifest.json">'
+    theme_color = '<meta name="theme-color" content="#7B2FFF">'
+    apple_meta = '<meta name="apple-mobile-web-app-capable" content="yes">'
+    apple_icon = '<link rel="apple-touch-icon" href="/icon-192.png">'
+    pwa_script = '<script src="/pwa.js" defer></script>'
     
-    # Create PWA metadata
-    if not hasattr(st.session_state, "pwa"):
-        st.session_state.pwa = {
-            "installed": False,
-            "notifications_enabled": False,
-            "online": True,
-            "queued_tasks": [],
-            "last_sync": None,
-        }
-    
-    # Static file server port
-    static_port = 8000
-    
-    # Create HTML for PWA components to inject - using the static file server
-    pwa_html = f"""
-    <link rel="manifest" href="http://localhost:{static_port}/manifest.json">
-    <meta name="theme-color" content="#7B2FFF">
-    <link rel="apple-touch-icon" href="http://localhost:{static_port}/icon-192.png">
-    <script src="http://localhost:{static_port}/pwa.js" defer></script>
-    <script>
-        // Register event listener for messages from PWA script
-        window.addEventListener('message', function(event) {{
-            if (event.data.type === 'streamlit:setComponentValue') {{
-                // Pass PWA status to Streamlit
-                const data = event.data;
-                if (data.key && data.value) {{
-                    // Handle PWA status updates
-                    console.log("PWA Status:", data.key, data.value);
-                    
-                    // Send this data to Streamlit via the Streamlit component API
-                    if (window.parent && window.parent.postMessage) {{
-                        window.parent.postMessage({{
-                            type: "streamlit:setComponentValue",
-                            value: data.value,
-                            dataType: "json"
-                        }}, "*");
-                    }}
-                }}
-            }}
-        }});
-        
-        // Configure service worker URL
-        window.SERVICE_WORKER_URL = "http://localhost:{static_port}/sw.js";
-        
-        // Check offline status
-        function updateOnlineStatus() {{
-            console.log("Online status:", navigator.onLine);
-            const statusEl = document.getElementById('online-status');
-            if (statusEl) {{
-                statusEl.textContent = navigator.onLine ? "✓ Online" : "✗ Offline";
-                statusEl.className = navigator.onLine ? "online-status online" : "online-status offline";
-            }}
-        }}
-        
-        window.addEventListener('online', updateOnlineStatus);
-        window.addEventListener('offline', updateOnlineStatus);
-    </script>
-    <style>
-        .online-status {{
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 14px;
-            margin-left: 10px;
-        }}
-        .online {{
-            background-color: #c2f5d0;
-            color: #0a3816;
-        }}
-        .offline {{
-            background-color: #f5c2c2;
-            color: #380a0a;
-        }}
-        #pwa-status {{
-            font-size: 14px;
-            margin-left: 10px;
-            color: #7B2FFF;
-        }}
-    </style>
-    <div style="display: flex; align-items: center; margin-bottom: 10px;">
-        <span id="online-status" class="online-status online">✓ Online</span>
-        <span id="pwa-status">Initializing...</span>
-    </div>
+    # Combine all head elements
+    head_html = f"""
+    {manifest_link}
+    {theme_color}
+    {apple_meta}
+    {apple_icon}
+    {pwa_script}
     """
     
-    # Inject HTML
-    st.markdown(pwa_html, unsafe_allow_html=True)
+    # Inject head elements into Streamlit
+    st.markdown(head_html, unsafe_allow_html=True)
+    
+    # Create a container for PWA status updates from JavaScript
+    if 'pwa_status' not in st.session_state:
+        st.session_state.pwa_status = {
+            'serviceWorkerSupported': False,
+            'serviceWorkerRegistered': False,
+            'serviceWorkerActive': False,
+            'databaseSupported': False,
+            'databaseInitialized': False,
+            'pushManagerSupported': False,
+            'notificationsSupported': False,
+            'notificationsEnabled': False,
+            'installPromptAvailable': False,
+            'installed': False,
+            'pwaMode': False,
+            'online': True
+        }
 
 def get_pwa_status():
     """Get the current PWA status"""
-    return st.session_state.pwa
+    if 'pwa_status' not in st.session_state:
+        initialize_pwa()
+    
+    return st.session_state.pwa_status
 
 def check_pwa_mode():
     """Check if the app is running in PWA mode"""
-    return st.session_state.pwa.get("installed", False)
+    status = get_pwa_status()
+    return status.get('pwaMode', False)
 
 def display_pwa_install_button():
     """Display a button to install the PWA"""
-    st.markdown("""
-    <button id="install-pwa" class="pwa-button" style="display:none;">
-        Install QA³ App
-    </button>
-    <div id="pwa-status"></div>
-    """, unsafe_allow_html=True)
+    status = get_pwa_status()
+    
+    if status.get('installed', False):
+        st.success("✅ QA³ is installed as a PWA")
+        return
+    
+    if status.get('installPromptAvailable', False):
+        install_button_html = """
+        <button 
+            onclick="window.installQuasarPwa()" 
+            style="background-color: #7B2FFF; color: white; border: none; 
+                  padding: 0.5rem 1rem; border-radius: 0.25rem; cursor: pointer;">
+            Install QA³ as App
+        </button>
+        <script>
+            // Update button when install state changes
+            window.addEventListener('appinstalled', function() {
+                document.querySelector('button').style.display = 'none';
+            });
+        </script>
+        """
+        st.markdown(install_button_html, unsafe_allow_html=True)
+    else:
+        st.info("⚠️ Install QA³ by using your browser's 'Add to Home Screen' or 'Install' option in the address bar")
 
 def display_notification_button():
     """Display a button to enable/disable notifications"""
-    st.markdown("""
-    <button id="enable-notifications" class="notification-button">
-        Enable Notifications
+    status = get_pwa_status()
+    
+    if not status.get('notificationsSupported', False):
+        st.warning("⚠️ Notifications are not supported in your browser")
+        return
+    
+    button_text = "Disable Notifications" if status.get('notificationsEnabled', False) else "Enable Notifications"
+    notification_button_html = f"""
+    <button 
+        id="notification-toggle"
+        onclick="window.toggleQuasarNotifications()" 
+        style="background-color: #7B2FFF; color: white; border: none; 
+              padding: 0.5rem 1rem; border-radius: 0.25rem; cursor: pointer;">
+        {button_text}
     </button>
-    """, unsafe_allow_html=True)
+    <button 
+        onclick="window.sendQuasarTestNotification()" 
+        style="background-color: #555555; color: white; border: none; 
+              margin-left: 0.5rem; padding: 0.5rem 1rem; border-radius: 0.25rem; cursor: pointer;">
+        Test Notification
+    </button>
+    """
+    st.markdown(notification_button_html, unsafe_allow_html=True)
 
 def add_offline_task(task_data):
     """Add a task to the offline queue"""
-    if not hasattr(st.session_state, "pwa"):
-        initialize_pwa()
-    
-    st.session_state.pwa["queued_tasks"].append({
-        "id": len(st.session_state.pwa["queued_tasks"]) + 1,
-        "data": task_data,
-        "timestamp": datetime.now().isoformat()
-    })
-    
-    # In a real implementation, you would also store this in IndexedDB
-    # through communication with the PWA script
-    
-    return True
+    # Create a component that will call the storeTask JavaScript function
+    store_task_html = f"""
+    <div id="store-task-container"></div>
+    <script>
+        (function() {{
+            const taskData = {json.dumps(task_data)};
+            if (window.quasarPwa) {{
+                window.quasarPwa.storeTask(taskData)
+                    .then(result => {{
+                        console.log('Task stored:', result);
+                    }})
+                    .catch(error => {{
+                        console.error('Failed to store task:', error);
+                    }});
+            }} else {{
+                console.error('QUASAR PWA system not initialized');
+            }}
+        }})();
+    </script>
+    """
+    st.markdown(store_task_html, unsafe_allow_html=True)
 
 def get_pwa_controls():
     """Get PWA control elements for the sidebar"""
-    if not hasattr(st.session_state, "pwa"):
-        initialize_pwa()
+    status = get_pwa_status()
     
-    is_installed = st.session_state.pwa.get("installed", False)
-    has_notifications = st.session_state.pwa.get("notifications_enabled", False)
+    col1, col2 = st.columns(2)
     
-    pwa_status = f"""
-    <div class="pwa-controls">
-        <h4>QA³ App Status</h4>
-        <p>Installation: {"✅ Installed" if is_installed else "❌ Not Installed"}</p>
-        <p>Notifications: {"✅ Enabled" if has_notifications else "❌ Disabled"}</p>
-    </div>
-    """
+    with col1:
+        if status.get('installed', False):
+            st.markdown("✅ **PWA Installed**")
+        elif status.get('installPromptAvailable', False):
+            display_pwa_install_button()
+        else:
+            st.markdown("⚙️ **PWA Available**")
     
-    return pwa_status
+    with col2:
+        if status.get('serviceWorkerActive', False):
+            if status.get('notificationsSupported', False):
+                display_notification_button()
+            else:
+                st.markdown("⚙️ **Offline Ready**")
+        else:
+            st.markdown("⏳ **Initializing...**")
+    
+    return status
 
 def create_pwa_files():
     """Create necessary PWA files in the public directory"""
-    # This would create the manifest.json, service worker, and icons
-    # but we're already creating these files separately
+    # This function would be called during deployment
+    # For this demo, we've already created the files manually
     pass
 
 def add_browser_integration():
     """Add visible browser integration for the PWA"""
-    st.markdown("""
+    # Inject a component that displays browser controls in the PWA context
+    browser_html = """
+    <div id="browser-controls" class="pwa-browser" style="display: none;">
+        <div class="browser-top">
+            <button onclick="window.history.back()" class="browser-btn">←</button>
+            <button onclick="window.history.forward()" class="browser-btn">→</button>
+            <button onclick="window.location.reload()" class="browser-btn">↻</button>
+            <div class="url-bar">
+                <span id="browser-url"></span>
+            </div>
+        </div>
+    </div>
+    
     <style>
-        .visible-browser {
+        .pwa-browser {
             border: 1px solid #444;
             border-radius: 8px;
-            overflow: hidden;
-            margin-bottom: 20px;
-            background-color: #fff;
+            margin-bottom: 10px;
+            background: #2A2A3C;
         }
-        .browser-toolbar {
-            background-color: #2D2D44;
-            padding: 8px;
+        
+        .browser-top {
             display: flex;
             align-items: center;
-            border-bottom: 1px solid #444;
+            padding: 8px;
+            background: #333344;
+            border-radius: 8px 8px 0 0;
         }
-        .browser-controls {
-            display: flex;
-            gap: 8px;
-            margin-right: 10px;
-        }
-        .browser-control {
-            width: 12px;
-            height: 12px;
+        
+        .browser-btn {
+            background: #555;
+            border: none;
+            color: white;
+            width: 30px;
+            height: 30px;
             border-radius: 50%;
+            margin-right: 5px;
+            cursor: pointer;
         }
-        .browser-control.red { background-color: #FF5F57; }
-        .browser-control.yellow { background-color: #FFBD2E; }
-        .browser-control.green { background-color: #28CA41; }
-        .browser-address {
-            background-color: #1A1A2E;
-            color: #ddd;
-            padding: 6px 10px;
-            border-radius: 4px;
+        
+        .url-bar {
             flex-grow: 1;
-            font-size: 12px;
+            background: #222;
+            padding: 5px 10px;
+            border-radius: 15px;
+            color: #aaa;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        .browser-content {
-            height: 500px;
-            background-color: #fff;
-            color: #000;
-            padding: 0;
-            position: relative;
-            overflow: hidden;
-        }
-        .browser-loading {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 3px;
-            background: linear-gradient(to right, #7B2FFF, #28CA41);
-            animation: loading 2s infinite;
-        }
-        @keyframes loading {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(100%); }
-        }
-        .browser-iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
-        }
-        .browser-placeholder {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            color: #666;
-            font-size: 14px;
-        }
-        .browser-placeholder svg {
-            margin-bottom: 20px;
-            width: 80px;
-            height: 80px;
-            color: #7B2FFF;
-        }
     </style>
-    <div class="visible-browser">
-        <div class="browser-toolbar">
-            <div class="browser-controls">
-                <div class="browser-control red"></div>
-                <div class="browser-control yellow"></div>
-                <div class="browser-control green"></div>
-            </div>
-            <div class="browser-address" id="browser-url">https://www.example.com</div>
-        </div>
-        <div class="browser-content">
-            <div class="browser-loading" id="browser-loading"></div>
-            <div class="browser-placeholder" id="browser-placeholder">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p>Enter a task above to begin browsing with quantum acceleration</p>
-            </div>
-            <!-- Browser content will be dynamically updated -->
-        </div>
-    </div>
+    
     <script>
-        // This would be expanded to handle real browser interaction
-        function updateBrowserUI(url, content) {
-            document.getElementById('browser-url').textContent = url;
-            document.getElementById('browser-placeholder').style.display = 'none';
-            // Add content to browser
-        }
+        // Show browser controls only in PWA mode
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                if (isPwaMode()) {
+                    document.getElementById('browser-controls').style.display = 'block';
+                    document.getElementById('browser-url').textContent = window.location.href;
+                }
+            }, 1000);
+        });
     </script>
-    """, unsafe_allow_html=True)
+    """
+    
+    st.markdown(browser_html, unsafe_allow_html=True)
 
 def display_pwa_card():
     """Display a card explaining PWA features"""
-    st.markdown("""
-    <div style="background-color: #252538; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
-        <h3 style="color: #7B2FFF;">QA³ Progressive Web App</h3>
-        <p>Install QUASAR QA³ as an app on your device for:</p>
-        <ul>
-            <li>Offline access to quantum tasks</li>
-            <li>Task notifications when complete</li>
-            <li>Faster performance</li>
-            <li>Desktop/home screen access</li>
-        </ul>
-        <button id="install-pwa-card" style="background-color: #7B2FFF; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Install App</button>
-    </div>
-    <script>
-        // Connect this button to the PWA install function
-        document.getElementById('install-pwa-card').addEventListener('click', function() {
-            if (window.quasarPwa) {
-                window.quasarPwa.installPwa();
-            }
-        });
-    </script>
-    """, unsafe_allow_html=True)
+    with st.expander("About PWA Features", expanded=False):
+        st.markdown("""
+        ### Progressive Web App Features
+        
+        QA³ is available as a Progressive Web App, which means you can:
+        
+        - **Install it on your device** - Use it like a native app from your home screen
+        - **Work offline** - Access core functionality even without an internet connection
+        - **Receive notifications** - Get alerts when your quantum tasks complete
+        - **Automatic updates** - Always have the latest version
+        
+        Try installing QA³ as an app for the best experience!
+        """)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            display_pwa_install_button()
+        
+        with col2:
+            display_notification_button()
 
 def display_notification_demo():
     """Display a demo of the notification system"""
-    if st.button("Send Test Notification"):
-        # In a real implementation, this would call the PWA script to send a notification
-        st.success("Test notification sent! Check your device notifications.")
-        
-        # For demo purposes, we'll just display what the notification would look like
+    with st.expander("Notification Demo", expanded=False):
         st.markdown("""
-        <div style="background-color: #252538; padding: 15px; border-radius: 5px; margin-top: 10px; display: flex; align-items: center;">
-            <img src="/icon-192.png" width="40" height="40" style="margin-right: 15px;">
-            <div>
-                <div style="font-weight: bold;">QUASAR QA³ Notification</div>
-                <div style="font-size: 14px;">Your quantum task has completed processing!</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        ### Notification System
+        
+        QA³ can send you notifications when:
+        
+        - Your quantum tasks complete
+        - Optimization solutions are found
+        - Factorization tasks finish
+        - Search results are ready
+        
+        Try a test notification below:
+        """)
+        
+        notification_demo_html = """
+        <button 
+            onclick="window.sendQuasarTestNotification()" 
+            style="background-color: #7B2FFF; color: white; border: none; 
+                  padding: 0.5rem 1rem; border-radius: 0.25rem; cursor: pointer;">
+            Send Test Notification
+        </button>
+        """
+        
+        st.markdown(notification_demo_html, unsafe_allow_html=True)
