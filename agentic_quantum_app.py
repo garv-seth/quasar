@@ -951,6 +951,20 @@ def display_web_interface():
         st.error("Web agent could not be initialized. Please check console logs for details.")
         return
     
+    st.markdown("""
+    This interface allows you to browse the web with quantum-enhanced capabilities. 
+    The agent uses quantum algorithms to optimize search relevance and information extraction.
+    
+    ✨ **New!** QUASAR QA³ now supports PWA installation for offline use and notifications!
+    """)
+    
+    # Add visible browser integration if available
+    try:
+        from pwa_integration import add_browser_integration
+        add_browser_integration()
+    except ImportError:
+        pass
+    
     # Create tabs for different web agent functionality
     tabs = st.tabs(["Autonomous Task", "Direct Navigation", "Search & Analysis", "History"])
     

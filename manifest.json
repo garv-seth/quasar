@@ -1,21 +1,51 @@
 {
-  "name": "QA³: Quantum-Accelerated AI Agent",
+  "name": "QUASAR QA³: Quantum-Accelerated AI Agent",
   "short_name": "QA³",
-  "description": "Quantum-enhanced web browsing and AI agent with true agentic capabilities",
+  "description": "A quantum-powered AI agent with autonomous web interaction capabilities",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#1E1E2E",
   "theme_color": "#7B2FFF",
   "icons": [
     {
-      "src": "icon-192.png",
+      "src": "/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
-      "src": "icon-512.png",
+      "src": "/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
-  ]
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/screenshot1.jpg",
+      "sizes": "1280x720",
+      "type": "image/jpeg"
+    }
+  ],
+  "orientation": "any",
+  "categories": ["productivity", "education", "science"],
+  "prefer_related_applications": false,
+  "related_applications": [],
+  "shortcuts": [
+    {
+      "name": "Quantum Search",
+      "short_name": "Search",
+      "description": "Perform a quantum-accelerated search",
+      "url": "/?task=search",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Quantum Circuits",
+      "short_name": "Circuits",
+      "description": "Explore quantum circuits",
+      "url": "/?page=circuits",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "offline_enabled": true
 }
