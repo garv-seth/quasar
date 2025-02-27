@@ -1496,13 +1496,14 @@ class AutonomousAgent:
     - Advanced AI agent architectures
     """
     
-    def __init__(self, use_quantum: bool = True, n_qubits: int = 8):
+    def __init__(self, use_quantum: bool = True, n_qubits: int = 8, web_agent=None):
         """
         Initialize the autonomous agent
         
         Args:
             use_quantum: Whether to use quantum computing capabilities
             n_qubits: Number of qubits for quantum simulations
+            web_agent: Optional web agent for web browsing capabilities
         """
         # Agent configuration
         self.use_quantum = use_quantum
@@ -1516,6 +1517,9 @@ class AutonomousAgent:
         self.decision = DecisionSystem(use_llm=True)
         self.goals = GoalManagementSystem()
         self.learning = LearningSystem()
+        
+        # Set web agent if provided
+        self.web_agent = web_agent
         
         # Initialize quantum capabilities
         self.quantum_initialized = False
@@ -1535,6 +1539,12 @@ class AutonomousAgent:
         self.goals.add_goal("Understand the user interface", priority=8)
         self.goals.add_goal("Accomplish user-specified tasks", priority=10)
         self.goals.add_goal("Learn from interactions", priority=6)
+        
+        # Register web capabilities if available
+        if web_agent:
+            self.goals.add_goal("Use web resources effectively", priority=7)
+            self.memory.add_semantic_knowledge("has_web_capabilities", True)
+            logger.info("Web agent connected to autonomous agent")
         
         logger.info(f"Autonomous agent initialized with {n_qubits} qubits")
     
@@ -1582,6 +1592,71 @@ class AutonomousAgent:
         # Add as a goal
         goal_id = self.goals.add_goal(f"Complete task: {task}", priority=9)
         
+        # Check if this is a task that would benefit from web search
+        is_web_search_task = any(term in task.lower() for term in [
+            "search", "find", "look up", "information about", "learn about", 
+            "research", "what is", "how to", "microsoft", "quantum"
+        ])
+        
+        # Try using web agent if available and task is suitable
+        web_result = None
+        if is_web_search_task and hasattr(self, "web_agent") and self.web_agent:
+            try:
+                logger.info(f"Using quantum web agent for task: {task}")
+                
+                # Extract search terms from task
+                search_terms = task.replace("search for", "").replace("find information about", "").strip()
+                search_url = f"https://www.google.com/search?q={search_terms.replace(' ', '+')}"
+                
+                # Visit the search URL
+                web_result = self.web_agent.visit(search_url)
+                
+                if web_result and web_result.get("success", False):
+                    # Perform quantum-enhanced analysis if the page was loaded
+                    analysis_result = self.web_agent.quantum_analyze_page()
+                    
+                    # Store the web result and analysis for later use
+                    self.memory.update_working_memory("web_search_url", web_result.get("url", ""))
+                    self.memory.update_working_memory("web_search_title", web_result.get("title", ""))
+                    
+                    if analysis_result and analysis_result.get("success", False):
+                        self.memory.update_working_memory("web_analysis", analysis_result)
+                        
+                        # Add as observation
+                        self.memory.add_observation({
+                            "type": "web_search",
+                            "query": search_terms,
+                            "url": web_result.get("url", ""),
+                            "title": web_result.get("title", ""),
+                            "analysis": analysis_result,
+                            "timestamp": datetime.now().isoformat()
+                        })
+                        
+                        # Store a successful web search result
+                        web_search_info = {
+                            "success": True,
+                            "url": web_result.get("url", ""),
+                            "title": web_result.get("title", ""),
+                            "top_terms": analysis_result.get("top_words", {}),
+                            "quantum_score": analysis_result.get("quantum_score", 0)
+                        }
+                        
+                        # Create a successful result to return early
+                        return {
+                            "task": task,
+                            "success": True,
+                            "action_taken": {
+                                "type": "web_search",
+                                "search_terms": search_terms,
+                                "url": search_url
+                            },
+                            "result": web_search_info,
+                            "agent_state": self.get_status()
+                        }
+            except Exception as e:
+                logger.error(f"Error using web agent: {str(e)}")
+                # Continue with normal processing if web approach fails
+                
         # Capture current state
         perception_result = self.perception.capture_screen()
         if perception_result["success"]:
@@ -1812,18 +1887,19 @@ class AutonomousAgent:
         self.action_queue.put(action)
 
 
-async def run_agent(task: str) -> Dict[str, Any]:
+async def run_agent(task: str, web_agent=None) -> Dict[str, Any]:
     """
     Run the autonomous agent on a specific task
     
     Args:
         task: Description of the task
+        web_agent: Optional WebAgent for web browsing capabilities
         
     Returns:
         Dict with task results
     """
     # Create and initialize the agent
-    agent = AutonomousAgent()
+    agent = AutonomousAgent(web_agent=web_agent)
     
     # Process the task
     result = await agent.process_task(task)
@@ -1831,14 +1907,15 @@ async def run_agent(task: str) -> Dict[str, Any]:
     return result
 
 
-def run_agent_sync(task: str) -> Dict[str, Any]:
+def run_agent_sync(task: str, web_agent=None) -> Dict[str, Any]:
     """
     Synchronous wrapper for run_agent
     
     Args:
         task: Description of the task
+        web_agent: Optional WebAgent for web browsing capabilities
         
     Returns:
         Dict with task results
     """
-    return asyncio.run(run_agent(task))
+    return asyncio.run(run_agent(task, web_agent=web_agent))

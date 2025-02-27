@@ -427,10 +427,21 @@ def initialize_agent():
         return True
     
     try:
-        # Create the autonomous agent
+        # Create the quantum-enhanced web agent first (this is the real web interaction capability)
+        web_integration = create_quantum_web_integration(n_qubits=st.session_state.n_qubits)
+        web_agent = None
+        if web_integration and web_integration.get("success", False):
+            web_agent = web_integration["agent"]
+            logger.info(f"Quantum-enhanced web agent initialized with {st.session_state.n_qubits} qubits")
+        else:
+            error_msg = web_integration.get('error', 'Unknown error') if web_integration else "Web integration failed"
+            logger.error(f"Failed to initialize web agent: {error_msg}")
+        
+        # Create the autonomous agent with web agent integration
         agent = AutonomousAgent(
             use_quantum=True,
-            n_qubits=st.session_state.n_qubits
+            n_qubits=st.session_state.n_qubits,
+            web_agent=web_agent  # Pass the web agent to the autonomous agent
         )
         
         # Create the quantum circuit builder
@@ -438,15 +449,6 @@ def initialize_agent():
         
         # Create the quantum simulator
         quantum_simulator = QuantumSimulator(n_qubits=st.session_state.n_qubits)
-        
-        # Create the quantum-enhanced web agent (this is the real web interaction capability)
-        web_integration = create_quantum_web_integration(n_qubits=st.session_state.n_qubits)
-        web_agent = None
-        if web_integration["success"]:
-            web_agent = web_integration["agent"]
-            logger.info(f"Quantum-enhanced web agent initialized with {st.session_state.n_qubits} qubits")
-        else:
-            logger.error(f"Failed to initialize web agent: {web_integration.get('error', 'Unknown error')}")
         
         # Store in session state
         st.session_state.agent = agent
@@ -456,9 +458,10 @@ def initialize_agent():
         st.session_state.agent_initialized = True
         
         # Add initialization to chat history
+        web_status = "with web capabilities" if web_agent else "without web capabilities"
         st.session_state.chat_history.append({
             "role": "system",
-            "content": f"Agent initialized with {st.session_state.n_qubits} qubits.",
+            "content": f"Agent initialized with {st.session_state.n_qubits} qubits {web_status}.",
             "timestamp": datetime.now().isoformat()
         })
         
@@ -516,17 +519,67 @@ def process_user_message(message: str):
     
     # Run the agent on this task
     with st.spinner("Agent processing task..."):
-        result = asyncio.run(st.session_state.agent.process_task(message))
-    
-    # Store the result
-    st.session_state.task_results[message] = result
+        try:
+            result = asyncio.run(st.session_state.agent.process_task(message))
+            
+            # Store the result
+            st.session_state.task_results[message] = result
+            
+            # Check if result is a dictionary
+            if isinstance(result, dict):
+                # Extract success status and error message
+                result_data = result.get("result", {})
+                if isinstance(result_data, dict):
+                    success = result_data.get("success", False)
+                    error = result_data.get("error", None)
+                    
+                    # Check for web search results
+                    web_results = result_data.get("web_search_results", [])
+                    action_type = result.get("action_taken", {}).get("type", "")
+                    
+                    # Create response text
+                    if action_type == "web_search" and web_results:
+                        # Create a more informative response for web searches
+                        url = web_results[0].get("url", "")
+                        title = web_results[0].get("title", "")
+                        quantum_score = web_results[0].get("quantum_relevance_score", 0)
+                        
+                        response_text = f"I found information about '{message}' on the web.\n\n"
+                        response_text += f"**Source:** {title}\n"
+                        response_text += f"**URL:** {url}\n"
+                        response_text += f"**Relevance Score:** {quantum_score:.2f}\n\n"
+                        
+                        if "top_terms" in web_results[0]:
+                            top_terms = web_results[0]["top_terms"]
+                            if isinstance(top_terms, dict) and top_terms:
+                                response_text += "**Key Topics:**\n"
+                                for term, score in list(top_terms.items())[:5]:
+                                    response_text += f"- {term}: {score:.2f}\n"
+                        
+                        # If we've visited this site, add it to web history
+                        if url and title:
+                            if {"url": url, "title": title} not in st.session_state.web_history:
+                                st.session_state.web_history.append({"url": url, "title": title})
+                    else:
+                        # Default response
+                        response_text = f"Task processed. Success: {success}"
+                        if error:
+                            response_text += f"\nError: {error}"
+                else:
+                    success = False
+                    error = "Invalid result structure"
+                    response_text = f"Task processed. Success: {success}\nError: {error}"
+            else:
+                success = False
+                error = "Invalid result type"
+                response_text = f"Task processed. Success: {success}\nError: {error}"
+                
+        except Exception as e:
+            # Handle any exceptions during processing
+            response_text = f"Error processing task: {str(e)}"
+            logger.error(f"Error in process_user_message: {str(e)}")
     
     # Add agent response to history
-    response = result.get("result", {}).get("success", False)
-    response_text = f"Task processed. Success: {response}"
-    if "error" in result.get("result", {}):
-        response_text += f"\nError: {result['result']['error']}"
-    
     st.session_state.chat_history.append({
         "role": "assistant",
         "content": response_text,
