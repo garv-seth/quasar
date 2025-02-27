@@ -433,7 +433,7 @@ class QuantumEnhancedWebAgent(WebAgent):
                 "url": page_data["url"],
                 "title": page_data["title"],
                 "top_words": dict(top_words),
-                "quantum_results": quantum_results.tolist(),
+                "quantum_results": quantum_results if isinstance(quantum_results, list) else list(quantum_results),
                 "quantum_score": float(quantum_score),
                 "circuit_diagram": circuit_diagram,
                 "feature_vector": feature_vector,
@@ -568,7 +568,7 @@ class QuantumEnhancedWebAgent(WebAgent):
                     "total_elements": len(elements),
                     "quantum_enhanced": True,
                     "circuit_diagram": circuit_diagram,
-                    "quantum_results": quantum_results.tolist(),
+                    "quantum_results": quantum_results if isinstance(quantum_results, list) else list(quantum_results),
                     "timestamp": datetime.now().isoformat()
                 }
             else:
