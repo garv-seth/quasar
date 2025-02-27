@@ -1355,6 +1355,13 @@ def main():
     # Initialize the session state
     initialize_session_state()
     
+    # Import PWA integration
+    try:
+        from pwa_integration import initialize_pwa, display_pwa_card, add_browser_integration
+        has_pwa = True
+    except ImportError:
+        has_pwa = False
+    
     # Set up the page
     st.set_page_config(
         page_title="QA³: Quantum-Accelerated AI Agent",
@@ -1363,11 +1370,20 @@ def main():
         initial_sidebar_state="expanded"
     )
     
+    # Initialize PWA if available
+    if has_pwa:
+        initialize_pwa()
+    
     # Display the header
     display_header()
     
     # Sidebar configuration
     st.sidebar.title("QA³ Agent Configuration")
+    
+    # PWA installation card in sidebar if available
+    if has_pwa and not st.session_state.get("pwa_mode", False):
+        with st.sidebar.expander("Install QUASAR QA³ App", expanded=True):
+            display_pwa_card()
     
     # Quantum settings
     st.sidebar.header("Quantum Settings")
