@@ -1,5 +1,8 @@
 {pkgs}: {
   deps = [
+    pkgs.chromedriver
+    pkgs.chromium
+    pkgs.geckodriver
     pkgs.libxcrypt
     pkgs.spdlog
     pkgs.nlohmann_json
