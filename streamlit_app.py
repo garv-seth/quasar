@@ -1,44 +1,60 @@
 """
 QUASAR: Quantum-Accelerated Search and AI Reasoning
-Simplified Streamlit Interface for Demo
+Main Streamlit Interface with Azure Quantum and Claude 3.7 Integration
 """
 
 import streamlit as st
 import time
 import random
 import logging
+import asyncio
+import json
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
-# Import our enhanced quantum core with real quantum features
+# Import our quantum core and AI helpers
 from quantum_core import QuantumCore
+from ai_helpers import AIEngine
 import os
 import numpy as np
 import pandas as pd
-import json
+import plotly.express as px
+import plotly.graph_objects as go
+from dotenv import load_dotenv
 
-# Try to import quantum-specific libraries
-try:
-    import pennylane as qml
-    PENNYLANE_AVAILABLE = True
-except ImportError:
-    PENNYLANE_AVAILABLE = False
-    
-try:
-    from azure.quantum import Workspace
-    from azure.quantum.target import ionq
-    AZURE_QUANTUM_AVAILABLE = True
-except ImportError:
-    AZURE_QUANTUM_AVAILABLE = False
+# Load environment variables from .env file if it exists
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Try to import quantum-specific libraries
+try:
+    import pennylane as qml
+    PENNYLANE_AVAILABLE = True
+    logger.info("PennyLane quantum computing library available.")
+except ImportError:
+    PENNYLANE_AVAILABLE = False
+    logger.warning("PennyLane quantum computing library not available. Some quantum features will be simulated.")
+
+# Check for Azure Quantum
+try:
+    from azure.quantum import Workspace
+    AZURE_QUANTUM_AVAILABLE = True
+    logger.info("Azure Quantum SDK available.")
+except ImportError:
+    AZURE_QUANTUM_AVAILABLE = False
+    logger.warning("Azure Quantum SDK not available. Azure Quantum features will be disabled.")
+
+# Helper function for async operations in Streamlit
+async def run_async(func, *args, **kwargs):
+    return await func(*args, **kwargs)
+
 # Page configuration
 st.set_page_config(
     page_title="QUASAR Framework",
-    page_icon="🧠",
+    page_icon="🔬",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -70,6 +86,39 @@ st.markdown("""
         color: #2ca02c;
         font-weight: bold;
     }
+    .code-block {
+        background-color: #f0f2f6;
+        padding: 1em;
+        border-radius: 5px;
+        font-family: monospace;
+        overflow-x: auto;
+    }
+    .quantum-result {
+        background-color: #e6f3ff;
+        border-left: 4px solid #1E90FF;
+        padding: 1em;
+        margin: 1em 0;
+        border-radius: 5px;
+    }
+    .classical-result {
+        background-color: #f5f5f5;
+        border-left: 4px solid #696969;
+        padding: 1em;
+        margin: 1em 0;
+        border-radius: 5px;
+    }
+    .info-box {
+        background-color: #e6f3ff;
+        padding: 1em;
+        border-radius: 5px;
+        margin: 1em 0;
+    }
+    .warning-box {
+        background-color: #fff3cd;
+        padding: 1em;
+        border-radius: 5px;
+        margin: 1em 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -93,6 +142,19 @@ if 'quantum_core' not in st.session_state:
     st.session_state.show_api_form = not azure_available
     st.session_state.api_keys_configured = azure_available
     st.session_state.show_circuit_details = False
+    st.session_state.chat_messages = []
+
+# Initialize AI engine if not already in session state
+if 'ai_engine' not in st.session_state:
+    claude_available = os.environ.get("ANTHROPIC_API_KEY") is not None
+    openai_available = os.environ.get("OPENAI_API_KEY") is not None
+    
+    st.session_state.ai_engine = AIEngine(
+        use_claude=claude_available,
+        use_openai=openai_available
+    )
+    st.session_state.show_ai_form = not (claude_available or openai_available)
+    st.session_state.ai_configured = claude_available or openai_available
 
 # Main header
 st.markdown('<div class="main-header">QUASAR: Quantum-Accelerated AI Agent</div>', unsafe_allow_html=True)
@@ -103,17 +165,27 @@ with st.sidebar:
     
     # Navigation
     st.markdown("### Navigation")
-    tabs = ["Home", "Quantum Search", "Quantum Factorization", "Quantum Optimization"]
+    tabs = ["Home", "Quantum Search", "Quantum Factorization", "Quantum Optimization", "AI Agent", "Task History"]
     selected_tab = st.radio("Select Page", tabs)
     st.session_state.current_tab = selected_tab.lower().replace(" ", "_")
     
     # Quantum settings
     st.markdown("### Quantum Settings")
     use_quantum = st.checkbox("Use Quantum Acceleration", value=True)
-    n_qubits = st.slider("Number of Qubits", min_value=4, max_value=29, value=8)
+    n_qubits = st.slider("Number of Qubits", min_value=4, max_value=20, value=8)
+    
+    # Azure Quantum settings
+    use_azure = st.checkbox("Use Azure Quantum", value=st.session_state.quantum_core.use_azure and st.session_state.api_keys_configured)
+    
+    # AI settings if we have AI configured
+    if st.session_state.ai_configured:
+        st.markdown("### AI Settings")
+        use_claude = st.checkbox("Use Claude 3.7", value=True and os.environ.get("ANTHROPIC_API_KEY") is not None)
+        use_openai = st.checkbox("Use GPT-4o", value=True and os.environ.get("OPENAI_API_KEY") is not None)
     
     # Show circuit details checkbox
-    show_circuits = st.checkbox("Show Quantum Circuit Details", value=st.session_state.show_circuit_details)
+    show_circuits = st.checkbox("Show Quantum Circuit Details", value=st.session_state.show_circuit_details if 'show_circuit_details' in st.session_state else False)
+    st.session_state.show_circuit_details = show_circuits
     
     # Display hardware status
     if st.session_state.api_keys_configured and st.session_state.quantum_core.use_azure:
@@ -129,15 +201,19 @@ with st.sidebar:
     if n_qubits != st.session_state.quantum_core.n_qubits:
         st.session_state.quantum_core.n_qubits = n_qubits
         st.info(f"Number of qubits updated to {n_qubits}")
-        
-    if show_circuits != st.session_state.show_circuit_details:
-        st.session_state.show_circuit_details = show_circuits
+    
+    if use_azure != st.session_state.quantum_core.use_azure and st.session_state.api_keys_configured:
+        st.session_state.quantum_core.use_azure = use_azure and st.session_state.api_keys_configured
+        st.info(f"Azure Quantum {'enabled' if use_azure else 'disabled'}")
     
     # About section
     st.markdown("---")
     st.markdown("""
     **QUASAR Framework v1.0**  
     Quantum-Accelerated Search and AI Reasoning
+    
+    Using real quantum hardware through Azure Quantum
+    and advanced AI with Claude 3.7 Sonnet
     
     © 2025 Quantum Labs
     """)
@@ -146,61 +222,112 @@ with st.sidebar:
 if st.session_state.current_tab == "home":
     st.markdown("## Welcome to QUASAR")
     
-    # Azure Quantum API Key Configuration Form
-    if st.session_state.show_api_form:
-        st.warning("⚠️ Azure Quantum credentials are required for hardware acceleration")
-        with st.expander("Configure Azure Quantum API Keys", expanded=True):
-            st.markdown("""
-            To use real quantum hardware through Azure Quantum, you need to provide your Azure Quantum credentials.
-            These credentials will be stored as environment variables for this session.
-            """)
-            
-            with st.form(key="azure_quantum_credentials"):
-                subscription_id = st.text_input(
-                    "Azure Subscription ID", 
-                    value=os.environ.get("AZURE_QUANTUM_SUBSCRIPTION_ID", ""),
-                    type="password"
-                )
-                resource_group = st.text_input(
-                    "Azure Resource Group",
-                    value=os.environ.get("AZURE_QUANTUM_RESOURCE_GROUP", "")
-                )
-                workspace_name = st.text_input(
-                    "Azure Quantum Workspace Name",
-                    value=os.environ.get("AZURE_QUANTUM_WORKSPACE_NAME", "")
-                )
-                location = st.text_input(
-                    "Azure Quantum Location",
-                    value=os.environ.get("AZURE_QUANTUM_LOCATION", "")
-                )
+    # API Key Configuration Forms - First Azure Quantum
+    api_config_col1, api_config_col2 = st.columns(2)
+    
+    with api_config_col1:
+        if not st.session_state.api_keys_configured:
+            st.warning("⚠️ Azure Quantum credentials are required for hardware acceleration")
+            with st.expander("Configure Azure Quantum API Keys", expanded=True):
+                st.markdown("""
+                To use real quantum hardware through Azure Quantum, you need to provide your Azure Quantum credentials.
+                These credentials will be stored as environment variables for this session.
+                """)
                 
-                submit_button = st.form_submit_button(label="Save Credentials")
-                
-                if submit_button:
-                    # Save credentials as environment variables
-                    os.environ["AZURE_QUANTUM_SUBSCRIPTION_ID"] = subscription_id
-                    os.environ["AZURE_QUANTUM_RESOURCE_GROUP"] = resource_group
-                    os.environ["AZURE_QUANTUM_WORKSPACE_NAME"] = workspace_name
-                    os.environ["AZURE_QUANTUM_LOCATION"] = location
-                    
-                    # Update session state
-                    st.session_state.api_keys_configured = True
-                    st.session_state.show_api_form = False
-                    
-                    # Reinitialize quantum core with Azure
-                    st.session_state.quantum_core = QuantumCore(
-                        use_quantum=True,
-                        n_qubits=st.session_state.quantum_core.n_qubits,
-                        use_azure=True
+                with st.form(key="azure_quantum_credentials"):
+                    subscription_id = st.text_input(
+                        "Azure Subscription ID", 
+                        value=os.environ.get("AZURE_QUANTUM_SUBSCRIPTION_ID", ""),
+                        type="password"
+                    )
+                    resource_group = st.text_input(
+                        "Azure Resource Group",
+                        value=os.environ.get("AZURE_QUANTUM_RESOURCE_GROUP", "")
+                    )
+                    workspace_name = st.text_input(
+                        "Azure Quantum Workspace Name",
+                        value=os.environ.get("AZURE_QUANTUM_WORKSPACE_NAME", "")
+                    )
+                    location = st.text_input(
+                        "Azure Quantum Location",
+                        value=os.environ.get("AZURE_QUANTUM_LOCATION", "")
                     )
                     
-                    st.success("Azure Quantum credentials configured successfully! Using quantum hardware acceleration.")
-                    st.experimental_rerun()
+                    submit_button = st.form_submit_button(label="Save Credentials")
+                    
+                    if submit_button:
+                        # Save credentials as environment variables
+                        os.environ["AZURE_QUANTUM_SUBSCRIPTION_ID"] = subscription_id
+                        os.environ["AZURE_QUANTUM_RESOURCE_GROUP"] = resource_group
+                        os.environ["AZURE_QUANTUM_WORKSPACE_NAME"] = workspace_name
+                        os.environ["AZURE_QUANTUM_LOCATION"] = location
+                        
+                        # Update session state
+                        st.session_state.api_keys_configured = True
+                        st.session_state.show_api_form = False
+                        
+                        # Reinitialize quantum core with Azure
+                        st.session_state.quantum_core = QuantumCore(
+                            use_quantum=True,
+                            n_qubits=st.session_state.quantum_core.n_qubits,
+                            use_azure=True
+                        )
+                        
+                        st.success("Azure Quantum credentials configured successfully! Using quantum hardware acceleration.")
+                        st.experimental_rerun()
+    
+    # AI API Key Configuration Form
+    with api_config_col2:
+        if not st.session_state.ai_configured:
+            st.warning("⚠️ Claude or OpenAI API key is required for AI agent capabilities")
+            with st.expander("Configure AI API Keys", expanded=True):
+                st.markdown("""
+                To use advanced AI capabilities with the QUASAR framework, provide at least one of the following API keys.
+                These credentials will be stored as environment variables for this session.
+                """)
+                
+                with st.form(key="ai_api_credentials"):
+                    anthropic_api_key = st.text_input(
+                        "Anthropic API Key (for Claude 3.7)", 
+                        value=os.environ.get("ANTHROPIC_API_KEY", ""),
+                        type="password"
+                    )
+                    openai_api_key = st.text_input(
+                        "OpenAI API Key (for GPT-4o)",
+                        value=os.environ.get("OPENAI_API_KEY", ""),
+                        type="password"
+                    )
+                    
+                    submit_button = st.form_submit_button(label="Save API Keys")
+                    
+                    if submit_button:
+                        # Save credentials as environment variables
+                        if anthropic_api_key:
+                            os.environ["ANTHROPIC_API_KEY"] = anthropic_api_key
+                        
+                        if openai_api_key:
+                            os.environ["OPENAI_API_KEY"] = openai_api_key
+                        
+                        # Update session state
+                        st.session_state.ai_configured = bool(anthropic_api_key or openai_api_key)
+                        st.session_state.show_ai_form = False
+                        
+                        # Reinitialize AI engine
+                        st.session_state.ai_engine = AIEngine(
+                            use_claude=bool(anthropic_api_key),
+                            use_openai=bool(openai_api_key)
+                        )
+                        
+                        st.success("AI API keys configured successfully!")
+                        st.experimental_rerun()
     
     st.markdown("""
     QUASAR (Quantum-Accelerated Search and AI Reasoning) is a cutting-edge hybrid quantum-classical 
     computing platform that intelligently routes computational tasks to quantum or classical processors 
     based on their characteristics.
+    
+    This implementation leverages Azure Quantum's IonQ integration for real quantum hardware access
+    and uses Claude 3.7 Sonnet for advanced AI capabilities.
     """)
     
     # Feature highlights
@@ -239,12 +366,12 @@ if st.session_state.current_tab == "home":
     st.markdown("### How QUASAR Works")
     
     st.markdown("""
-    QUASAR combines the power of quantum computing with classical processing to deliver optimal performance:
+    QUASAR combines the power of quantum computing with classical processing and advanced AI:
     
-    1. **Task Analysis**: Analyzes computational tasks to determine if quantum acceleration would be beneficial
-    2. **Quantum Routing**: Routes appropriate subtasks to quantum processors or simulators
+    1. **Task Analysis**: Uses Claude 3.7 to analyze computational tasks to determine if quantum acceleration would be beneficial
+    2. **Quantum Routing**: Routes appropriate subtasks to Azure Quantum's IonQ hardware or simulators
     3. **Hybrid Execution**: Executes tasks using the optimal mix of quantum and classical resources
-    4. **Result Integration**: Combines and interprets results from both processing paradigms
+    4. **AI-Enhanced Results**: Uses advanced AI to interpret and explain results in natural language
     """)
     
     # Get started
@@ -256,6 +383,7 @@ if st.session_state.current_tab == "home":
     - **Quantum Search**: Experience quadratic speedup for database search (Grover's algorithm)
     - **Quantum Factorization**: See exponential speedup for number factorization (Shor's algorithm)
     - **Quantum Optimization**: Solve complex optimization problems with quantum advantage (QAOA)
+    - **AI Agent**: Interact with our quantum-enhanced AI agent for general tasks
     """)
 
 # Quantum Search Page
@@ -282,12 +410,48 @@ elif st.session_state.current_tab == "quantum_search":
     with col2:
         st.metric("Database Records", database_size)
     
+    # AI-powered query enhancement option
+    if st.session_state.ai_configured:
+        enhance_query = st.checkbox("Use AI to enhance search query", value=True)
+    else:
+        enhance_query = False
+        st.info("Configure Claude or OpenAI API keys to enable AI-powered query enhancement")
+    
     # Search button
     if st.button("Search with Quantum Acceleration"):
         with st.spinner("Processing search with quantum acceleration..."):
+            # Enhance query with AI if enabled
+            enhanced_query = search_query
+            if enhance_query and st.session_state.ai_configured:
+                with st.spinner("Enhancing query with AI..."):
+                    try:
+                        # Call AI engine to enhance query
+                        analysis_result = asyncio.run(run_async(
+                            st.session_state.ai_engine.analyze_task,
+                            f"Enhance this search query for better results: {search_query}"
+                        ))
+                        
+                        # Extract enhanced query from analysis
+                        analysis_text = analysis_result.get("analysis", "")
+                        if isinstance(analysis_text, dict) and "parameters" in analysis_text:
+                            enhanced_query = analysis_text.get("parameters", {}).get("enhanced_query", search_query)
+                        elif isinstance(analysis_text, str) and "enhanced query" in analysis_text.lower():
+                            # Try to extract from text
+                            lines = analysis_text.split("\n")
+                            for line in lines:
+                                if "enhanced query" in line.lower() and ":" in line:
+                                    enhanced_query = line.split(":", 1)[1].strip().strip('"\'')
+                                    break
+                        
+                        if enhanced_query != search_query:
+                            st.info(f"AI enhanced your query to: '{enhanced_query}'")
+                    except Exception as e:
+                        st.error(f"Error enhancing query: {e}")
+                        enhanced_query = search_query
+            
             # Execute search
             search_result = st.session_state.quantum_core.run_quantum_search(
-                search_query, database_size
+                enhanced_query, database_size
             )
             
             # Add to history
@@ -296,6 +460,7 @@ elif st.session_state.current_tab == "quantum_search":
                 "timestamp": datetime.now().isoformat(),
                 "task_type": "search",
                 "query": search_query,
+                "enhanced_query": enhanced_query if enhanced_query != search_query else None,
                 "database_size": database_size,
                 "use_quantum": st.session_state.quantum_core.use_quantum,
                 "results": search_result.get("results", []),
@@ -317,6 +482,23 @@ elif st.session_state.current_tab == "quantum_search":
                 st.metric("Quantum Time", f"{task_record['quantum_time']:.4f}s")
             with col3:
                 st.metric("Speedup", f"{task_record['speedup']:.2f}x")
+            
+            # AI-enhanced explanation if available
+            if st.session_state.ai_configured:
+                try:
+                    with st.spinner("Generating AI explanation..."):
+                        explanation = asyncio.run(run_async(
+                            st.session_state.ai_engine.explain_quantum_advantage,
+                            "search",
+                            database_size,
+                            task_record['speedup'],
+                            task_record['quantum_time'],
+                            task_record['classical_time']
+                        ))
+                        st.markdown("#### Quantum Advantage Explanation")
+                        st.markdown(f'<div class="info-box">{explanation}</div>', unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"Error generating explanation: {e}")
             
             # Result explanation
             st.markdown(f"#### Search Summary")
@@ -380,7 +562,9 @@ def grover_circuit():
 # Draw the circuit
 print(qml.draw(grover_circuit)())
                     """
+                    st.markdown('<div class="code-block">', unsafe_allow_html=True)
                     st.code(code, language="python")
+                    st.markdown('</div>', unsafe_allow_html=True)
                     
                     st.markdown("### Circuit Diagram:")
                     # ASCII art representation of circuit (since we can't draw it directly)
@@ -414,15 +598,18 @@ elif st.session_state.current_tab == "quantum_factorization":
     
     st.markdown("""
     Quantum factorization algorithms, such as Shor's algorithm, offer an exponential speedup
-    over classical factorization methods. This enables efficient factorization of large numbers,
-    which has significant implications for cryptography and number theory.
+    over classical algorithms for integer factorization. This is one of the most powerful
+    known quantum advantages, with implications for cryptography and number theory.
     """)
     
     # Factorization UI
-    number_to_factorize = st.number_input("Enter a number to factorize:", 
-                                         min_value=2, 
-                                         max_value=10000000, 
-                                         value=15)
+    number_to_factorize = st.number_input(
+        "Enter a number to factorize:", 
+        min_value=2, 
+        max_value=1000000,
+        value=21,
+        step=1
+    )
     
     # Factorize button
     if st.button("Factorize with Quantum Acceleration"):
@@ -438,6 +625,7 @@ elif st.session_state.current_tab == "quantum_factorization":
                 "timestamp": datetime.now().isoformat(),
                 "task_type": "factorization",
                 "number": number_to_factorize,
+                "bit_length": number_to_factorize.bit_length(),
                 "use_quantum": st.session_state.quantum_core.use_quantum,
                 "factors": factorization_result.get("factors", []),
                 "prime_factors": factorization_result.get("prime_factors", []),
@@ -454,124 +642,115 @@ elif st.session_state.current_tab == "quantum_factorization":
             st.subheader("Performance Comparison")
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("Classical Time", f"{task_record['classical_time']:.4f}s")
+                st.metric("Classical Time", f"{task_record['classical_time']:.6f}s")
             with col2:
-                st.metric("Quantum Time", f"{task_record['quantum_time']:.4f}s")
+                st.metric("Quantum Time", f"{task_record['quantum_time']:.6f}s")
             with col3:
                 st.metric("Speedup", f"{task_record['speedup']:.2f}x")
+            
+            # AI-enhanced explanation if available
+            if st.session_state.ai_configured:
+                try:
+                    with st.spinner("Generating AI explanation..."):
+                        explanation = asyncio.run(run_async(
+                            st.session_state.ai_engine.explain_quantum_advantage,
+                            "factorization",
+                            number_to_factorize.bit_length(),
+                            task_record['speedup'],
+                            task_record['quantum_time'],
+                            task_record['classical_time']
+                        ))
+                        st.markdown("#### Quantum Advantage Explanation")
+                        st.markdown(f'<div class="info-box">{explanation}</div>', unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"Error generating explanation: {e}")
             
             # Factorization results
             st.markdown("#### Factorization Results")
             
-            # All factors
-            st.markdown(f"**All Factors**: {', '.join(map(str, factorization_result.get('factors', [])))}")
-            
             # Prime factorization
-            prime_factors = factorization_result.get('prime_factors', [])
+            prime_factors = factorization_result.get("prime_factors", [])
             prime_factorization = " × ".join(map(str, prime_factors))
-            st.markdown(f"**Prime Factorization**: {number_to_factorize} = {prime_factorization}")
+            st.markdown(f"**Prime factorization**: {number_to_factorize} = {prime_factorization}")
+            
+            # All factors
+            factors = factorization_result.get("factors", [])
+            factors_str = ", ".join(map(str, sorted(factors)))
+            st.markdown(f"**All factors**: {factors_str}")
             
             # Explanation
-            st.markdown("#### Explanation")
+            st.markdown("#### Detailed Explanation")
             st.markdown(factorization_result.get("explanation", ""))
             
             # Show quantum circuit details if available
-            if PENNYLANE_AVAILABLE and st.session_state.show_circuit_details:
+            if PENNYLANE_AVAILABLE and st.session_state.show_circuit_details and number_to_factorize <= 15:
                 st.markdown("### Quantum Circuit Details")
                 st.markdown("""
-                This section shows the simplified quantum circuit used for Shor's algorithm for factorization:
+                This section shows a simplified quantum circuit inspired by Shor's algorithm concepts:
                 
-                1. **Phase Estimation**: Estimate the period of the modular function
-                2. **Continued Fractions**: Convert the phase to a continued fraction
-                3. **Period Finding**: Extract the period from the continued fraction
-                4. **GCD Calculation**: Use period to find factors with GCD
+                1. **Quantum Fourier Transform**: Prepares superposition for period finding
+                2. **Modular Exponentiation**: Applies operations based on the number properties
+                3. **Inverse QFT**: Extracts the period information
+                4. **Classical Post-Processing**: Converts period to factors
                 """)
                 
-                # Create a visualization of the circuit
+                # Create a visualization of a simplified Shor-inspired circuit
                 try:
-                    # Create a simple Shor's algorithm visualization
-                    code = """
+                    code = f"""
 import pennylane as qml
 import numpy as np
 
 # Create a PennyLane device
-dev = qml.device('default.qubit', wires=5)
+dev = qml.device('default.qubit', wires=4)
 
 @qml.qnode(dev)
-def shors_period_finding_circuit():
-    # First register (3 qubits for phase estimation)
-    for i in range(3):
+def shors_demo_circuit():
+    # We're factoring {number_to_factorize}
+    
+    # First register: period finding register
+    for i in range(2):
         qml.Hadamard(wires=i)
     
-    # Second register (2 qubits) - initialize to |1⟩
-    qml.PauliX(wires=3)
+    # Second register: computational register
+    # Initialize to |1⟩
+    qml.PauliX(wires=2)
     
-    # Controlled U operations for phase estimation
-    # U|y⟩ = |ay mod N⟩ where a is coprime with N
-    qml.ControlledQubitUnitary(np.eye(4), control_wires=[0], wires=[3, 4])
+    # Apply controlled modular multiplication operations
+    # In a real Shor's implementation, this would be much more complex
+    # This is just a conceptual demo
+    qml.ctrl(qml.PauliX(wires=3), control=0)
+    qml.ctrl(qml.SWAP(wires=[2, 3]), control=1)
     
-    # Modular multiplication by a^2 (controlled by 2nd qubit)
-    qml.ControlledQubitUnitary(np.eye(4), control_wires=[1], wires=[3, 4])
-    
-    # Modular multiplication by a^4 (controlled by 3rd qubit)
-    qml.ControlledQubitUnitary(np.eye(4), control_wires=[2], wires=[3, 4])
-    
-    # Inverse QFT on the first register
-    qml.SWAP(wires=[0, 2])
+    # Apply inverse QFT to first register
     qml.Hadamard(wires=0)
-    qml.ControlledPhaseShift(np.pi/2, control_wires=[0], wires=1)
-    qml.ControlledPhaseShift(np.pi/4, control_wires=[0], wires=2)
+    qml.ctrl(qml.PhaseShift(-np.pi/2, wires=0), control=1)
     qml.Hadamard(wires=1)
-    qml.ControlledPhaseShift(np.pi/2, control_wires=[1], wires=2)
-    qml.Hadamard(wires=2)
     
-    return qml.probs(wires=range(3))
+    return qml.probs(wires=range(4))
 
 # Draw the circuit
-print(qml.draw(shors_period_finding_circuit)())
+print(qml.draw(shors_demo_circuit)())
                     """
+                    st.markdown('<div class="code-block">', unsafe_allow_html=True)
                     st.code(code, language="python")
+                    st.markdown('</div>', unsafe_allow_html=True)
                     
-                    st.markdown("### Circuit Diagram:")
-                    # ASCII art representation of circuit (since we can't draw it directly)
-                    circuit_ascii = """
-0: ──H──────────●─────────────────────SWAP───H──●───────●──────────────────
-                │                      │         │       │
-1: ──H──────────┼────●────────────────┼─────────PhaseShift(π/2)──H──●─────
-                │    │                 │                       │
-2: ──H──────────┼────┼────●───────────SWAP────────PhaseShift(π/4)──PhaseShift(π/2)──H──
-                │    │    │
-3: ──X──────────U────U²───U⁴───────────────────────────────────────────────
-                │    │    │
-4: ─────────────U────U²───U⁴───────────────────────────────────────────────
-                    """
-                    st.code(circuit_ascii, language=None)
-                    
-                    st.markdown("### Factor Finding Process")
-                    
-                    process_steps = f"""
-**1. Starting with N = {number_to_factorize}**
-- Choose a random a = 7 (coprime with N)
-- Compute a^r ≡ 1 (mod N) to find the period r
-
-**2. Quantum Subroutine Results:**
-- Measured phase from quantum: 0.5
-- Continued fraction approximation: 1/2
-- Estimated period r = 2
-
-**3. Classical Post-Processing:**
-- a^(r/2) - 1 = 7^1 - 1 = 6
-- a^(r/2) + 1 = 7^1 + 1 = 8
-- gcd(6, {number_to_factorize}) = {factorization_result.get('prime_factors', [])[0] if factorization_result.get('prime_factors', []) else 3}
-- gcd(8, {number_to_factorize}) = {factorization_result.get('prime_factors', [])[1] if len(factorization_result.get('prime_factors', [])) > 1 else 5}
-
-**4. Final Result:**
-- Factors found: {', '.join(map(str, factorization_result.get('prime_factors', [])))}
-                    """
-                    st.markdown(process_steps)
-                    
-                    st.info("This is a simplified representation of Shor's algorithm. The actual implementation for large numbers requires significantly more qubits and complex operations.")
-                    
+                    # Show plot of circuit results if available
+                    if factorization_result.get("circuit_results") is not None:
+                        st.markdown("### Circuit Measurement Probabilities")
+                        
+                        # Get probabilities and create plot
+                        probs = factorization_result.get("circuit_results", [])
+                        if len(probs) > 0:
+                            states = [f"{i:0{len(bin(len(probs)-1))-2}b}" for i in range(len(probs))]
+                            
+                            chart_data = pd.DataFrame({
+                                'State': states,
+                                'Probability': probs
+                            })
+                            
+                            st.bar_chart(chart_data.set_index('State'))
+                        
                 except Exception as e:
                     st.error(f"Error rendering quantum circuit: {e}")
 
@@ -580,23 +759,48 @@ elif st.session_state.current_tab == "quantum_optimization":
     st.markdown("## Quantum Optimization")
     
     st.markdown("""
-    Quantum optimization algorithms, such as the Quantum Approximate Optimization Algorithm (QAOA),
-    offer significant speedups for solving complex optimization problems. These algorithms leverage
-    quantum superposition to explore multiple solutions simultaneously.
+    Quantum optimization algorithms like QAOA (Quantum Approximate Optimization Algorithm)
+    can provide polynomial speedups for certain NP-hard optimization problems such as
+    resource allocation, scheduling, and routing.
     """)
     
     # Optimization UI
-    st.subheader("Optimization Problem Configuration")
+    st.subheader("Configure Optimization Problem")
     
-    col1, col2 = st.columns(2)
-    with col1:
-        problem_type = st.selectbox("Problem Type:", 
-                                  ["allocation", "scheduling", "generic"])
-    with col2:
-        problem_size = st.slider("Problem Size:", 
-                               min_value=2, 
-                               max_value=20, 
-                               value=5)
+    problem_type = st.selectbox(
+        "Problem Type:",
+        options=["resource_allocation", "scheduling", "portfolio_optimization"],
+        index=0
+    )
+    
+    problem_size = st.slider(
+        "Problem Size (dimensions):", 
+        min_value=2, 
+        max_value=20, 
+        value=5
+    )
+    
+    # Problem type descriptions
+    problem_descriptions = {
+        "resource_allocation": """
+        **Resource Allocation Problem**: 
+        Determining the optimal allocation of resources (e.g., compute nodes, memory) to tasks.
+        The quantum algorithm helps find an allocation that maximizes utility while respecting constraints.
+        """,
+        "scheduling": """
+        **Scheduling Problem**: 
+        Finding the optimal order and timing for a set of tasks, considering dependencies and resource constraints.
+        The quantum algorithm helps find a schedule that minimizes total completion time.
+        """,
+        "portfolio_optimization": """
+        **Portfolio Optimization Problem**: 
+        Selecting an optimal mix of assets to maximize returns while controlling risk.
+        The quantum algorithm helps find a portfolio allocation that balances risk and return.
+        """
+    }
+    
+    # Display problem description
+    st.markdown(problem_descriptions.get(problem_type, ""))
     
     # Optimize button
     if st.button("Optimize with Quantum Acceleration"):
@@ -635,208 +839,462 @@ elif st.session_state.current_tab == "quantum_optimization":
             with col3:
                 st.metric("Speedup", f"{task_record['speedup']:.2f}x")
             
-            # Problem description
-            st.markdown("#### Problem Description")
+            # AI-enhanced explanation if available
+            if st.session_state.ai_configured:
+                try:
+                    with st.spinner("Generating AI explanation..."):
+                        explanation = asyncio.run(run_async(
+                            st.session_state.ai_engine.explain_quantum_advantage,
+                            "optimization",
+                            problem_size,
+                            task_record['speedup'],
+                            task_record['quantum_time'],
+                            task_record['classical_time']
+                        ))
+                        st.markdown("#### Quantum Advantage Explanation")
+                        st.markdown(f'<div class="info-box">{explanation}</div>', unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"Error generating explanation: {e}")
             
-            if problem_type == "allocation":
-                # Resource allocation problem
-                st.markdown(f"**Resource Allocation Problem with {problem_size} resources and {problem_size} tasks**")
+            # Optimization results
+            st.markdown("#### Optimization Results")
+            
+            # Objective value
+            objective_value = optimization_result.get("objective_value", 0)
+            st.metric("Objective Value", f"{objective_value:.4f}", 
+                     delta=f"{optimization_result.get('improvement', 0):.2f}%")
+            
+            # Solution visualization depends on problem type
+            st.markdown("#### Solution Visualization")
+            
+            if problem_type == "resource_allocation":
+                # Resource allocation visualization
+                solution = optimization_result.get("solution", {})
+                resources = solution.get("resources", {})
+                allocations = solution.get("allocations", {})
                 
-                # Display problem details
-                with st.expander("Problem Details", expanded=False):
-                    st.markdown("**Resources:**")
-                    for resource in optimization_result.get("problem", {}).get("resources", []):
-                        st.markdown(f"- {resource}")
+                # Create allocation bar chart
+                if allocations:
+                    allocation_data = []
+                    for task, resource_allocs in allocations.items():
+                        for resource, amount in resource_allocs.items():
+                            allocation_data.append({
+                                "Task": task,
+                                "Resource": resource,
+                                "Amount": amount
+                            })
                     
-                    st.markdown("**Tasks:**")
-                    for task in optimization_result.get("problem", {}).get("tasks", []):
-                        st.markdown(f"- {task}")
+                    df = pd.DataFrame(allocation_data)
+                    fig = px.bar(df, x="Task", y="Amount", color="Resource", barmode="group")
+                    st.plotly_chart(fig)
             
             elif problem_type == "scheduling":
-                # Job scheduling problem
-                st.markdown(f"**Job Scheduling Problem with {problem_size} jobs**")
+                # Scheduling visualization (Gantt chart)
+                solution = optimization_result.get("solution", {})
+                schedule = solution.get("schedule", {})
                 
-                # Display problem details
-                with st.expander("Problem Details", expanded=False):
-                    st.markdown("**Jobs:**")
-                    for job in optimization_result.get("problem", {}).get("jobs", []):
-                        st.markdown(f"- {job}")
+                if schedule:
+                    # Create Gantt chart data
+                    gantt_data = []
+                    for task, timing in schedule.items():
+                        gantt_data.append({
+                            "Task": task,
+                            "Start": timing.get("start", 0),
+                            "End": timing.get("end", 1),
+                            "Resource": timing.get("resource", "Unknown")
+                        })
                     
-                    st.markdown("**Machines:**")
-                    for machine in optimization_result.get("problem", {}).get("machines", []):
-                        st.markdown(f"- {machine}")
+                    df = pd.DataFrame(gantt_data)
+                    fig = px.timeline(df, x_start="Start", x_end="End", y="Task", color="Resource")
+                    # Make the graph look like a Gantt chart
+                    fig.update_yaxes(autorange="reversed")
+                    st.plotly_chart(fig)
             
-            else:
-                # Generic optimization problem
-                st.markdown(f"**Generic Optimization Problem with {problem_size} variables**")
+            elif problem_type == "portfolio_optimization":
+                # Portfolio visualization (pie chart)
+                solution = optimization_result.get("solution", {})
+                portfolio = solution.get("portfolio", {})
                 
-                # Display problem details
-                with st.expander("Problem Details", expanded=False):
-                    st.markdown("**Variables:**")
-                    for var in optimization_result.get("problem", {}).get("variables", []):
-                        st.markdown(f"- {var}")
-            
-            # Solution
-            st.markdown("#### Optimization Solution")
-            
-            # Display solution
-            solution = optimization_result.get("solution", {})
-            objective = optimization_result.get("objective_value", 0)
-            
-            st.markdown(f"**Objective Value**: {objective:.4f}")
-            
-            # Display solution details
-            st.markdown("**Solution Details**:")
-            
-            if problem_type == "allocation":
-                # Resource allocation solution
-                for task, value in solution.items():
-                    st.markdown(f"- {task}: {value}")
-            
-            elif problem_type == "scheduling":
-                # Job scheduling solution
-                for job, details in solution.items():
-                    st.markdown(f"- {job}: {details}")
-            
-            else:
-                # Generic optimization solution
-                for var, value in solution.items():
-                    st.markdown(f"- {var}: {value:.4f}")
+                if portfolio:
+                    # Create pie chart
+                    portfolio_data = []
+                    for asset, weight in portfolio.items():
+                        portfolio_data.append({
+                            "Asset": asset,
+                            "Weight": weight
+                        })
+                    
+                    df = pd.DataFrame(portfolio_data)
+                    fig = px.pie(df, values="Weight", names="Asset")
+                    st.plotly_chart(fig)
             
             # Explanation
-            st.markdown("#### Explanation")
+            st.markdown("#### Solution Explanation")
             st.markdown(optimization_result.get("explanation", ""))
             
             # Show quantum circuit details if available
             if PENNYLANE_AVAILABLE and st.session_state.show_circuit_details:
                 st.markdown("### Quantum Circuit Details")
                 st.markdown("""
-                This section shows the quantum circuit used for the Quantum Approximate Optimization Algorithm (QAOA):
+                This section shows a simplified quantum circuit inspired by QAOA (Quantum Approximate Optimization Algorithm):
                 
-                1. **Parameterized Circuit**: Create a circuit with tunable parameters
-                2. **Problem Encoding**: Encode problem constraints in the Hamiltonian
-                3. **Quantum Evolution**: Evolve quantum state through alternating operators
-                4. **Measurement**: Sample from optimized quantum state to find solution
+                1. **Preparation**: Initialize in equal superposition
+                2. **Cost Unitary**: Encode problem constraints
+                3. **Mixer Unitary**: Explore solution space
+                4. **Iteration**: Repeat Cost and Mixer steps
+                5. **Measurement**: Sample best solution
                 """)
                 
-                # Create a visualization of the circuit
+                # Create a visualization of a simplified QAOA circuit
                 try:
-                    # Create a simple QAOA visualization for a small MaxCut problem
-                    code = """
+                    code = f"""
 import pennylane as qml
 import numpy as np
 
 # Create a PennyLane device
-dev = qml.device('default.qubit', wires=4)
+dev = qml.device('default.qubit', wires={problem_size})
 
-# Define a simple MaxCut problem on a graph with 4 nodes
-# Edges: (0,1), (1,2), (2,3), (3,0), (0,2)
-cost_h = {(0, 1): 1, (1, 2): 1, (2, 3): 1, (3, 0): 1, (0, 2): 1}
-
+# QAOA for a {problem_size}-variable problem
 @qml.qnode(dev)
-def qaoa_circuit(params):
-    # Number of qubits = number of nodes in the graph
-    n_qubits = 4
-    
-    # Number of QAOA layers
-    p = 1  # We're using just 1 layer for simplicity
-    
-    gamma = params[0]
-    beta = params[1]
-    
-    # Initial state: equal superposition
-    for i in range(n_qubits):
+def qaoa_circuit(gamma, beta):
+    # Prepare initial state (equal superposition)
+    for i in range({problem_size}):
         qml.Hadamard(wires=i)
     
-    # QAOA layers
-    # Cost Hamiltonian
-    for edge, weight in cost_h.items():
-        qml.CNOT(wires=[edge[0], edge[1]])
-        qml.RZ(gamma * weight, wires=edge[1])
-        qml.CNOT(wires=[edge[0], edge[1]])
+    # Alternating cost and mixer unitaries
+    # Cost unitary - encodes the problem constraints
+    for i in range({problem_size}-1):
+        qml.CNOT(wires=[i, i+1])
+        qml.RZ(gamma, wires=i+1)
+        qml.CNOT(wires=[i, i+1])
     
-    # Mixer Hamiltonian
-    for i in range(n_qubits):
-        qml.RX(2 * beta, wires=i)
+    # Mixer unitary - explores the solution space
+    for i in range({problem_size}):
+        qml.RX(beta, wires=i)
     
-    return qml.probs(wires=range(n_qubits))
+    return qml.probs(wires=range({problem_size}))
 
-# Optimal parameters found via classical optimization
-optimized_params = np.array([0.59, 0.32])
-
-# Draw the circuit
-print(qml.draw(lambda: qaoa_circuit(optimized_params))())
+# Example execution with random parameters
+gamma, beta = 0.5, 0.3
+result = qaoa_circuit(gamma, beta)
+print(qml.draw(qaoa_circuit)(gamma, beta))
                     """
+                    st.markdown('<div class="code-block">', unsafe_allow_html=True)
                     st.code(code, language="python")
+                    st.markdown('</div>', unsafe_allow_html=True)
                     
-                    st.markdown("### Circuit Diagram:")
-                    # ASCII art representation of circuit (since we can't draw it directly)
-                    circuit_ascii = """
-0: ──H──●─────────────●─────●─────────────●─────────RX(0.64)──
-       │             │     │             │
-1: ──H──X──RZ(0.59)──X──●──X──RZ(0.59)──X──────────RX(0.64)──
-                        │
-2: ──H──●─────────────●──X──RZ(0.59)──X───●────────RX(0.64)──
-       │             │                   │
-3: ──H──X──RZ(0.59)──X───────────────────X─────────RX(0.64)──
-                    """
-                    st.code(circuit_ascii, language=None)
-                    
-                    st.markdown("### Optimization Process")
-                    
-                    if problem_type == "allocation":
-                        problem_desc = f"Resource Allocation with {problem_size} resources"
-                    elif problem_type == "scheduling":
-                        problem_desc = f"Job Scheduling with {problem_size} jobs"
-                    else:
-                        problem_desc = f"Generic Optimization with {problem_size} variables"
-                    
-                    process_steps = f"""
-**1. Problem Formulation: {problem_desc}**
-- Encode problem as a combinatorial optimization task
-- Map constraints to Ising Hamiltonian: H = Σ w_ij Z_i Z_j
-
-**2. QAOA Circuit Execution:**
-- Initial state: |+⟩^⊗{problem_size} (equal superposition)
-- Apply cost operator: e^(-iγH_C)
-- Apply mixer operator: e^(-iβH_B)
-- Repeat for p=1 layer with optimal parameters (γ=0.59, β=0.32)
-
-**3. Measurement Results:**
-- Sample from optimized quantum state
-- Most probable state: |{bin(list(optimization_result.get("solution", {}).values()).count(1))[2:].zfill(problem_size)}⟩
-- Solution quality: {optimization_result.get("objective_value", 0):.4f}
-
-**4. Final Solution:**
-```
-{json.dumps(optimization_result.get("solution", {}), indent=2)}
-```
-                    """
-                    st.markdown(process_steps)
-                    
-                    # Show a bar chart of probabilities for possible solutions
-                    st.markdown("### Solution Probabilities")
-                    # Generate some simulated probability distribution
-                    n_states = min(2**problem_size, 16)  # Show at most 16 states
-                    
-                    # Create fake state labels and probabilities
-                    states = [format(i, f"0{problem_size}b") for i in range(n_states)]
-                    
-                    # Put higher probability on the solution state
-                    probs = [0.05] * n_states
-                    solution_state = 0
-                    for i, (_, val) in enumerate(solution.items()):
-                        solution_state |= (val & 1) << i
-                    solution_state = min(solution_state, n_states-1)  # Ensure within range
-                    probs[solution_state] = 0.40  # Highest probability for solution
-                    
-                    chart_data = pd.DataFrame({
-                        'State': states,
-                        'Probability': probs
-                    })
-                    
-                    st.bar_chart(chart_data.set_index('State'))
-                    st.info("The peaks in the distribution correspond to optimal or near-optimal solutions to the problem.")
+                    # Show QAOA energy landscape if available
+                    if "energy_landscape" in optimization_result:
+                        st.markdown("### QAOA Energy Landscape")
+                        energy_landscape = optimization_result.get("energy_landscape", [])
+                        
+                        if energy_landscape:
+                            # Create and display heatmap
+                            df = pd.DataFrame(energy_landscape)
+                            fig = px.imshow(df, 
+                                           labels=dict(x="Mixer Parameter (β)", y="Cost Parameter (γ)", color="Energy"),
+                                           color_continuous_scale="Viridis")
+                            st.plotly_chart(fig)
                     
                 except Exception as e:
                     st.error(f"Error rendering quantum circuit: {e}")
+
+# AI Agent Page
+elif st.session_state.current_tab == "ai_agent":
+    st.markdown("## Quantum-Enhanced AI Agent")
+    
+    st.markdown("""
+    Interact with our quantum-enhanced AI agent, which can leverage quantum computing
+    capabilities for appropriate tasks. The agent can understand natural language instructions
+    and route computational tasks to quantum or classical processors based on the nature of the task.
+    """)
+    
+    # Check if AI is configured
+    if not st.session_state.ai_configured:
+        st.warning("⚠️ Configure Claude or OpenAI API keys to enable the AI agent capabilities")
+        with st.expander("Configure AI API Keys", expanded=True):
+            st.markdown("""
+            To use the AI agent capabilities, provide at least one of the following API keys.
+            These credentials will be stored as environment variables for this session.
+            """)
+            
+            with st.form(key="ai_api_credentials_agent"):
+                anthropic_api_key = st.text_input(
+                    "Anthropic API Key (for Claude 3.7)", 
+                    value=os.environ.get("ANTHROPIC_API_KEY", ""),
+                    type="password"
+                )
+                openai_api_key = st.text_input(
+                    "OpenAI API Key (for GPT-4o)",
+                    value=os.environ.get("OPENAI_API_KEY", ""),
+                    type="password"
+                )
+                
+                submit_button = st.form_submit_button(label="Save API Keys")
+                
+                if submit_button:
+                    # Save credentials as environment variables
+                    if anthropic_api_key:
+                        os.environ["ANTHROPIC_API_KEY"] = anthropic_api_key
+                    
+                    if openai_api_key:
+                        os.environ["OPENAI_API_KEY"] = openai_api_key
+                    
+                    # Update session state
+                    st.session_state.ai_configured = bool(anthropic_api_key or openai_api_key)
+                    st.session_state.show_ai_form = False
+                    
+                    # Reinitialize AI engine
+                    st.session_state.ai_engine = AIEngine(
+                        use_claude=bool(anthropic_api_key),
+                        use_openai=bool(openai_api_key)
+                    )
+                    
+                    st.success("AI API keys configured successfully!")
+                    st.experimental_rerun()
+    else:
+        # Display chat interface
+        st.markdown("### Chat with the Quantum-AI Agent")
+        
+        # Initialize chat messages if not already in session state
+        if "chat_messages" not in st.session_state:
+            st.session_state.chat_messages = []
+        
+        # Display chat messages
+        for message in st.session_state.chat_messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+        
+        # Get user input
+        user_input = st.chat_input("Ask about quantum computing or provide a computational task...")
+        
+        if user_input:
+            # Add user message to chat
+            st.session_state.chat_messages.append({"role": "user", "content": user_input})
+            with st.chat_message("user"):
+                st.markdown(user_input)
+            
+            # Process user input with AI agent
+            with st.chat_message("assistant"):
+                with st.spinner("The quantum-enhanced AI agent is processing your request..."):
+                    try:
+                        # First analyze the task
+                        analysis_result = asyncio.run(run_async(
+                            st.session_state.ai_engine.analyze_task,
+                            user_input
+                        ))
+                        
+                        analysis = analysis_result.get("analysis", {})
+                        
+                        # Check if this is a computational task that can benefit from quantum computing
+                        if isinstance(analysis, dict) and analysis.get("quantum_advantage", False):
+                            task_type = analysis.get("task_type", "general")
+                            
+                            # Process with appropriate quantum method based on task type
+                            if task_type == "search":
+                                st.markdown("I'll use quantum search algorithms to process this request.")
+                                
+                                # Extract parameters
+                                parameters = analysis.get("parameters", {})
+                                query = parameters.get("query", user_input)
+                                database_size = parameters.get("database_size", 1000)
+                                
+                                # Execute search
+                                search_result = st.session_state.quantum_core.run_quantum_search(
+                                    query, database_size
+                                )
+                                
+                                # Generate summary
+                                summary = asyncio.run(run_async(
+                                    st.session_state.ai_engine.summarize_results,
+                                    "search",
+                                    search_result
+                                ))
+                                
+                                # Display results
+                                st.markdown(f"**Search Results**")
+                                st.markdown(summary)
+                                
+                                # Show top results
+                                for i, result in enumerate(search_result.get("results", [])[:3]):
+                                    st.markdown(f"**Result {i+1}**: {result.get('title', '')}")
+                                    st.markdown(f"{result.get('content', '')}")
+                                    st.markdown(f"Relevance: {result.get('relevance', 0):.1f}%")
+                                
+                                # Add to session history
+                                quantum_response = f"I processed your search request using quantum algorithms with a {search_result.get('speedup', 1.0):.2f}x speedup.\n\n{summary}"
+                                
+                            elif task_type == "factorization":
+                                st.markdown("I'll use quantum factorization algorithms to process this request.")
+                                
+                                # Extract parameters
+                                parameters = analysis.get("parameters", {})
+                                number = int(parameters.get("number", 21))
+                                
+                                # Execute factorization
+                                factorization_result = st.session_state.quantum_core.run_quantum_factorization(number)
+                                
+                                # Generate summary
+                                summary = asyncio.run(run_async(
+                                    st.session_state.ai_engine.summarize_results,
+                                    "factorization",
+                                    factorization_result
+                                ))
+                                
+                                # Display results
+                                st.markdown(f"**Factorization Results**")
+                                st.markdown(summary)
+                                
+                                # Show factors
+                                prime_factors = factorization_result.get("prime_factors", [])
+                                prime_factorization = " × ".join(map(str, prime_factors))
+                                st.markdown(f"**Prime factorization**: {number} = {prime_factorization}")
+                                
+                                # Add to session history
+                                quantum_response = f"I factorized the number {number} using quantum algorithms with a {factorization_result.get('speedup', 1.0):.2f}x speedup.\n\n{summary}"
+                                
+                            elif task_type == "optimization":
+                                st.markdown("I'll use quantum optimization algorithms to process this request.")
+                                
+                                # Extract parameters
+                                parameters = analysis.get("parameters", {})
+                                problem_type = parameters.get("problem_type", "resource_allocation")
+                                problem_size = int(parameters.get("problem_size", 5))
+                                
+                                # Execute optimization
+                                optimization_result = st.session_state.quantum_core.run_quantum_optimization(
+                                    problem_size, problem_type
+                                )
+                                
+                                # Generate summary
+                                summary = asyncio.run(run_async(
+                                    st.session_state.ai_engine.summarize_results,
+                                    "optimization",
+                                    optimization_result
+                                ))
+                                
+                                # Display results
+                                st.markdown(f"**Optimization Results**")
+                                st.markdown(summary)
+                                
+                                # Show objective value
+                                objective_value = optimization_result.get("objective_value", 0)
+                                st.markdown(f"**Objective value**: {objective_value:.4f}")
+                                
+                                # Add to session history
+                                quantum_response = f"I solved the {problem_type} optimization problem using quantum algorithms with a {optimization_result.get('speedup', 1.0):.2f}x speedup.\n\n{summary}"
+                                
+                            else:
+                                # General task
+                                st.markdown(f"I'm analyzing your request to determine if quantum computing would be beneficial...")
+                                
+                                # Generate response with AI
+                                ai_response = asyncio.run(run_async(
+                                    st.session_state.ai_engine.clients["claude"].messages.create if st.session_state.ai_engine.use_claude else st.session_state.ai_engine.clients["openai"].chat.completions.create,
+                                    model=st.session_state.ai_engine.claude_model if st.session_state.ai_engine.use_claude else st.session_state.ai_engine.openai_model,
+                                    max_tokens=1000,
+                                    messages=[
+                                        {"role": "system", "content": "You are a quantum computing expert assistant. You can help explain quantum computing concepts and answer questions about quantum algorithms, applications, and hardware. If presented with a computational task, you should consider whether quantum computing offers an advantage."},
+                                        {"role": "user", "content": user_input}
+                                    ]
+                                ))
+                                
+                                if st.session_state.ai_engine.use_claude:
+                                    quantum_response = ai_response.content[0].text
+                                else:
+                                    quantum_response = ai_response.choices[0].message.content
+                                
+                                st.markdown(quantum_response)
+                        
+                        else:
+                            # Not a quantum task, use regular AI response
+                            ai_response = asyncio.run(run_async(
+                                st.session_state.ai_engine.clients["claude"].messages.create if st.session_state.ai_engine.use_claude else st.session_state.ai_engine.clients["openai"].chat.completions.create,
+                                model=st.session_state.ai_engine.claude_model if st.session_state.ai_engine.use_claude else st.session_state.ai_engine.openai_model,
+                                max_tokens=1000,
+                                messages=[
+                                    {"role": "system", "content": "You are a quantum computing expert assistant. You can help explain quantum computing concepts and answer questions about quantum algorithms, applications, and hardware. If presented with a computational task, you should consider whether quantum computing offers an advantage."},
+                                    {"role": "user", "content": user_input}
+                                ]
+                            ))
+                            
+                            if st.session_state.ai_engine.use_claude:
+                                quantum_response = ai_response.content[0].text
+                            else:
+                                quantum_response = ai_response.choices[0].message.content
+                            
+                            st.markdown(quantum_response)
+                            
+                    except Exception as e:
+                        st.error(f"Error processing request: {e}")
+                        quantum_response = f"I encountered an error while processing your request: {str(e)}"
+                        st.markdown(quantum_response)
+            
+            # Add assistant response to chat history
+            st.session_state.chat_messages.append({"role": "assistant", "content": quantum_response})
+
+# Task History Page
+elif st.session_state.current_tab == "task_history":
+    st.markdown("## Task History")
+    
+    st.markdown("""
+    View the history of all quantum-accelerated tasks you've run in this session.
+    This helps you track performance and compare speedups across different tasks.
+    """)
+    
+    if len(st.session_state.task_history) == 0:
+        st.info("No tasks have been run yet. Try running a quantum search, factorization, or optimization task.")
+    else:
+        # Display task history
+        for i, task in enumerate(reversed(st.session_state.task_history)):
+            with st.expander(f"Task {task['id']}: {task['task_type'].capitalize()} ({task['timestamp']})", expanded=i == 0):
+                # Task details based on type
+                if task['task_type'] == "search":
+                    st.markdown(f"**Query**: {task['query']}")
+                    if task.get('enhanced_query'):
+                        st.markdown(f"**Enhanced Query**: {task['enhanced_query']}")
+                    st.markdown(f"**Database Size**: {task['database_size']} records")
+                elif task['task_type'] == "factorization":
+                    st.markdown(f"**Number**: {task['number']}")
+                    st.markdown(f"**Bit Length**: {task['bit_length']} bits")
+                    st.markdown(f"**Factors**: {', '.join(map(str, task['factors']))}")
+                elif task['task_type'] == "optimization":
+                    st.markdown(f"**Problem Type**: {task['problem_type']}")
+                    st.markdown(f"**Problem Size**: {task['problem_size']} dimensions")
+                    st.markdown(f"**Objective Value**: {task.get('objective_value', 0):.4f}")
+                
+                # Performance metrics
+                st.markdown("#### Performance Metrics")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Classical Time", f"{task['classical_time']:.6f}s")
+                with col2:
+                    st.metric("Quantum Time", f"{task['quantum_time']:.6f}s")
+                with col3:
+                    st.metric("Speedup", f"{task['speedup']:.2f}x")
+                
+                # Quantum usage
+                st.markdown(f"**Quantum Acceleration**: {'Enabled' if task['use_quantum'] else 'Disabled'}")
+                
+                # Create visualization
+                st.markdown("#### Performance Visualization")
+                
+                # Bar chart comparing classical vs quantum time
+                chart_data = pd.DataFrame({
+                    'Method': ['Classical', 'Quantum'],
+                    'Time (s)': [task['classical_time'], task['quantum_time']]
+                })
+                
+                fig = px.bar(chart_data, x='Method', y='Time (s)', 
+                            title=f"Performance Comparison for {task['task_type'].capitalize()} Task",
+                            color='Method', 
+                            color_discrete_map={'Classical': '#A9A9A9', 'Quantum': '#1E90FF'})
+                st.plotly_chart(fig)
+
+# Main function
+def main():
+    # Everything is already set up and running
+    pass
+
+if __name__ == "__main__":
+    main()

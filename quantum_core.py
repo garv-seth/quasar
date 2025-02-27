@@ -116,8 +116,6 @@ class QuantumCore:
         # Azure Quantum if available
         if self.use_azure and AZURE_QUANTUM_AVAILABLE:
             try:
-                from azure.quantum.target.ionq import Simulator
-                
                 # Create workspace object with proper credentials
                 self.workspace = Workspace(
                     subscription_id=os.environ.get("AZURE_QUANTUM_SUBSCRIPTION_ID"),
@@ -126,17 +124,30 @@ class QuantumCore:
                     location=os.environ.get("AZURE_QUANTUM_LOCATION")
                 )
                 
-                # Connect to IonQ simulator through Azure Quantum
-                self.devices["azure_ionq_simulator"] = Simulator(self.workspace)
-                
-                # Also try to connect to IonQ Aria-1 hardware
+                # Connect to IonQ simulator through Azure Quantum using PennyLane's device API
                 try:
-                    from azure.quantum.target.ionq import Aria1
-                    self.devices["azure_ionq_aria1"] = Aria1(self.workspace)
+                    # PennyLane's recommended way to connect to IonQ's simulator on Azure Quantum
+                    self.devices["azure_ionq_simulator"] = qml.device(
+                        "ionq.simulator", 
+                        wires=self.n_qubits, 
+                        shots=1024,
+                        azure={"workspace": self.workspace}
+                    )
+                    logger.info("Connected to IonQ simulator through Azure Quantum (PennyLane)")
+                except Exception as e:
+                    logger.warning(f"Could not connect to IonQ simulator: {e}")
+                
+                # Also try to connect to IonQ Aria-1 hardware through PennyLane
+                try:
+                    self.devices["azure_ionq_aria1"] = qml.device(
+                        "ionq.aria1", 
+                        wires=self.n_qubits, 
+                        shots=1024,
+                        azure={"workspace": self.workspace}
+                    )
                     logger.info("Connected to IonQ Aria-1 quantum hardware through Azure Quantum")
                 except Exception as e:
                     logger.warning(f"Could not connect to IonQ Aria-1 hardware: {e}")
-                logger.info("Connected to IonQ simulator through Azure Quantum")
             except Exception as e:
                 logger.error(f"Error connecting to Azure Quantum: {e}")
                 logger.info("Falling back to local simulator only")
