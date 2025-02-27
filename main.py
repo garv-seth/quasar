@@ -1,4 +1,7 @@
-"""Main entry point for the Q3A: Quantum-Accelerated AI Agent."""
+"""
+Q3A: Quantum-Accelerated AI Agent with Browser Automation
+Main Streamlit Interface
+"""
 
 import os
 import asyncio
@@ -6,11 +9,31 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import time
-import random
-import math
 import json
 from datetime import datetime
-from ai_agent import Q3AAgent
+import base64
+import logging
+from typing import Dict, List, Any, Optional
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
+# Import Enhanced Agent - fallback to standard agent if not available
+try:
+    from quantum_agent_framework.agents.enhanced_q3a_agent import EnhancedQ3AAgent
+    ENHANCED_AGENT_AVAILABLE = True
+except ImportError:
+    from ai_agent import Q3AAgent
+    ENHANCED_AGENT_AVAILABLE = False
+    logging.warning("Enhanced Q3A agent not available, using standard agent")
+
+# Import API key management
+try:
+    from utils.api_keys import check_api_keys, set_api_key
+    API_KEYS_MODULE_AVAILABLE = True
+except ImportError:
+    API_KEYS_MODULE_AVAILABLE = False
+    logging.warning("API keys module not available")
 
 # Page configuration
 st.set_page_config(
@@ -385,9 +408,247 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# Function to display API key configuration form
+def display_api_key_form():
+    """Display a form to configure API keys if not already set"""
+    with st.expander("Configure API Keys", expanded=not (os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"))):
+        st.markdown("### API Key Configuration")
+        
+        # OpenAI API key
+        openai_key = os.environ.get("OPENAI_API_KEY", "")
+        openai_key_input = st.text_input(
+            "OpenAI API Key", 
+            value="●●●●●●●●●●●●●●●●" if openai_key else "",
+            type="password",
+            help="Enter your OpenAI API key to enable GPT-4o integration"
+        )
+        
+        # Anthropic API key
+        anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        anthropic_key_input = st.text_input(
+            "Anthropic API Key",
+            value="●●●●●●●●●●●●●●●●" if anthropic_key else "",
+            type="password",
+            help="Enter your Anthropic API key to enable Claude 3.7 Sonnet integration"
+        )
+        
+        # Save keys button
+        if st.button("Save API Keys"):
+            # Set environment variables
+            if openai_key_input and openai_key_input != "●●●●●●●●●●●●●●●●":
+                os.environ["OPENAI_API_KEY"] = openai_key_input
+                if API_KEYS_MODULE_AVAILABLE:
+                    set_api_key("openai", openai_key_input)
+            
+            if anthropic_key_input and anthropic_key_input != "●●●●●●●●●●●●●●●●":
+                os.environ["ANTHROPIC_API_KEY"] = anthropic_key_input
+                if API_KEYS_MODULE_AVAILABLE:
+                    set_api_key("anthropic", anthropic_key_input)
+            
+            # Reinitialize agent
+            if 'agent' in st.session_state:
+                del st.session_state.agent
+            
+            st.success("API keys saved! Reinitializing agent...")
+            st.rerun()
+
+async def initialize_agent_if_needed():
+    """Initialize the enhanced Q3A agent if not already in session state"""
+    if 'agent' not in st.session_state:
+        # Check for API keys
+        use_openai = os.environ.get("OPENAI_API_KEY") is not None
+        use_claude = os.environ.get("ANTHROPIC_API_KEY") is not None
+        
+        # Use enhanced agent if available
+        if ENHANCED_AGENT_AVAILABLE:
+            try:
+                st.session_state.agent = EnhancedQ3AAgent(
+                    use_quantum=True, 
+                    n_qubits=8, 
+                    use_azure=True,
+                    use_claude=use_claude
+                )
+                
+                # Initialize agent's async components
+                await st.session_state.agent.initialize()
+                
+                # Set default session state values for enhanced agent
+                if 'browse_history' not in st.session_state:
+                    st.session_state.browse_history = []
+                if 'last_screenshot' not in st.session_state:
+                    st.session_state.last_screenshot = None
+                    
+                logging.info("Enhanced Q3A agent initialized")
+            except Exception as e:
+                logging.error(f"Error initializing enhanced agent: {str(e)}")
+                # Fallback to standard agent
+                st.session_state.agent = Q3AAgent(use_quantum=True, n_qubits=8, use_openai=use_openai)
+                logging.info("Fallback to standard Q3A agent")
+        else:
+            # Use standard agent
+            st.session_state.agent = Q3AAgent(use_quantum=True, n_qubits=8, use_openai=use_openai)
+            logging.info("Standard Q3A agent initialized")
+        
+        # Set default session state values
+        st.session_state.show_debug = False
+        st.session_state.tasks = []
+        st.session_state.messages = []
+        st.session_state.current_tab = "chat"
+
+# Function to display the browser interface (if enhanced agent available)
+def display_browser_interface():
+    """Display the browser interface with history and controls"""
+    if not ENHANCED_AGENT_AVAILABLE:
+        st.info("Browser automation features require the enhanced Q3A agent. This feature is not available in the current installation.")
+        return
+        
+    st.subheader("Quantum-Enhanced Web Browser")
+    
+    st.markdown("""
+    This interface allows you to interact with the quantum-enhanced browser.
+    The browser uses quantum computing to analyze web content, prioritize elements,
+    and enhance the search and retrieval capabilities.
+    """)
+    
+    # URL navigation form
+    with st.form(key="browser_form"):
+        url_input = st.text_input("Enter URL to browse:", placeholder="e.g., example.com or full URL")
+        
+        cols = st.columns([1, 5])
+        with cols[0]:
+            browse_button = st.form_submit_button("Browse")
+    
+    # Process URL navigation
+    if browse_button and url_input:
+        # Create a browse instruction
+        browse_instruction = f"Browse to {url_input} and analyze the content"
+        
+        # Add to messages
+        st.session_state.messages.append({"role": "user", "content": browse_instruction})
+        
+        # Process instruction asynchronously
+        try:
+            result = asyncio.run(st.session_state.agent.process_user_instruction(browse_instruction))
+            
+            if result:
+                # Add agent response to history
+                response = result.get("result", {}).get("response", "I couldn't browse to the specified URL.")
+                st.session_state.messages.append({"role": "assistant", "content": response})
+                
+                # Update browse history if it was a browsing task
+                if result.get("requires_browsing", False) and result.get("result", {}).get("success", False):
+                    browse_result = result.get("result", {})
+                    
+                    # Add to browse history
+                    browse_entry = {
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "url": browse_result.get("url", ""),
+                        "title": browse_result.get("title", ""),
+                        "summary": browse_result.get("summary", ""),
+                        "success": browse_result.get("success", False),
+                        "screenshot": None  # Will be updated if available
+                    }
+                    
+                    if 'browse_history' not in st.session_state:
+                        st.session_state.browse_history = []
+                        
+                    st.session_state.browse_history.append(browse_entry)
+        except Exception as e:
+            logging.error(f"Error processing browser request: {str(e)}")
+            st.error(f"An error occurred: {str(e)}")
+        
+        # Rerun to update the UI
+        st.rerun()
+    
+    # Display browse history
+    if hasattr(st.session_state, 'browse_history') and st.session_state.browse_history:
+        st.markdown("### Browse History")
+        
+        for i, entry in enumerate(reversed(st.session_state.browse_history)):
+            if i >= 5:  # Only show last 5 entries
+                break
+                
+            with st.expander(f"{entry.get('title', 'Unknown')} - {entry.get('url', '')}", expanded=i==0):
+                st.markdown(f"**Visited**: {entry.get('timestamp', 'Unknown')}")
+                
+                if entry.get("summary"):
+                    st.markdown(f"**Summary**: {entry.get('summary')}")
+                
+                # This is where we would display the screenshot
+                if entry.get("screenshot"):
+                    with st.container():
+                        st.markdown("<div style='text-align: center;'>Screenshot</div>", unsafe_allow_html=True)
+                        st.image(entry["screenshot"], use_column_width=True)
+                
+                # Re-browse button
+                if st.button(f"Browse Again", key=f"rebrowse_{i}"):
+                    # Create a browse instruction
+                    browse_instruction = f"Browse to {entry['url']} and analyze the content"
+                    
+                    # Add to messages
+                    st.session_state.messages.append({"role": "user", "content": browse_instruction})
+                    
+                    # Process instruction asynchronously
+                    try:
+                        result = asyncio.run(st.session_state.agent.process_user_instruction(browse_instruction))
+                        
+                        if result:
+                            # Add agent response to history
+                            response = result.get("result", {}).get("response", "I couldn't browse to the specified URL.")
+                            st.session_state.messages.append({"role": "assistant", "content": response})
+                    except Exception as e:
+                        logging.error(f"Error processing browser request: {str(e)}")
+                        st.error(f"An error occurred: {str(e)}")
+                    
+                    # Rerun to update the UI
+                    st.rerun()
+    else:
+        st.info("No browsing history yet. Enter a URL above to start browsing.")
+
 def main():
-    """Main function, not explicitly needed with Streamlit"""
-    pass
+    """Main application function"""
+    # Run async initialization inside a sync function
+    asyncio.run(initialize_agent_if_needed())
+    
+    # Main header
+    st.markdown('<div class="main-header">Q3A: Quantum-Accelerated AI Agent</div>', unsafe_allow_html=True)
+    
+    # Display API key configuration
+    display_api_key_form()
+    
+    # Update sidebar with browser tab if enhanced agent is available
+    if ENHANCED_AGENT_AVAILABLE:
+        with st.sidebar:
+            # Add browser tab to options
+            tab_options = ["Chat", "Browser", "Tasks", "Performance"]
+            selected_tab = st.radio("Select Interface", tab_options)
+            st.session_state.current_tab = selected_tab.lower()
+    
+    # Content based on selected tab
+    if st.session_state.current_tab == "browser" and ENHANCED_AGENT_AVAILABLE:
+        display_browser_interface()
+    # Default tabs remain unchanged
+
+    # Add enhanced agent features indication
+    if ENHANCED_AGENT_AVAILABLE:
+        st.sidebar.success("✅ Enhanced Agent with Browser Automation Available")
+    else:
+        st.sidebar.warning("⚠️ Standard Agent Only (Browser Automation Unavailable)")
+    
+    # Add Claude integration indication if available
+    if os.environ.get("ANTHROPIC_API_KEY") is not None:
+        st.sidebar.success("✅ Claude 3.7 Sonnet Integration Enabled")
+    else:
+        st.sidebar.warning("⚠️ Claude Integration Unavailable (API Key Required)")
+        
+    # Footer
+    st.markdown("---")
+    st.markdown("""
+    <div style="text-align: center; color: #888888; font-size: 0.8em;">
+        Q3A: Quantum-Accelerated AI Agent | QUASAR Framework v1.0.0<br>
+        Combining quantum computing with AI for enhanced capabilities
+    </div>
+    """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()

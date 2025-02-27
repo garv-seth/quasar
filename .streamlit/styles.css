@@ -1,0 +1,179 @@
+/* Custom styles for Q3A: Quantum-Accelerated AI Agent */
+
+/* Main header */
+.main-header {
+    font-size: 2.5em;
+    color: #FFFFFF;
+    text-align: center;
+    margin-bottom: 0.5em;
+    background: linear-gradient(45deg, #1E3B70, #29539B);
+    padding: 0.5em;
+    border-radius: 10px;
+}
+
+/* Section headers */
+.subheader {
+    font-size: 1.5em;
+    font-weight: bold;
+    margin-top: 1em;
+    margin-bottom: 0.5em;
+}
+
+/* Feature boxes */
+.feature-box {
+    background-color: #f0f2f6;
+    padding: 1em;
+    border-radius: 10px;
+    margin-bottom: 1em;
+}
+
+/* Quantum statistics */
+.quantum-stats {
+    font-size: 0.8em;
+    color: #4a4a4a;
+}
+
+/* Badges */
+.quantum-badge {
+    background-color: #29539B;
+    color: white;
+    padding: 0.2em 0.6em;
+    border-radius: 10px;
+    font-size: 0.8em;
+    margin-right: 0.5em;
+}
+
+.classical-badge {
+    background-color: #718096;
+    color: white;
+    padding: 0.2em 0.6em;
+    border-radius: 10px;
+    font-size: 0.8em;
+    margin-right: 0.5em;
+}
+
+/* Chat messages */
+.agent-message {
+    background-color: #f0f7ff;
+    border-left: 3px solid #29539B;
+    padding: 1em;
+    margin: 0.5em 0;
+    border-radius: 0 10px 10px 0;
+}
+
+.user-message {
+    background-color: #f2f2f2;
+    border-right: 3px solid #718096;
+    padding: 1em;
+    margin: 0.5em 0;
+    border-radius: 10px 0 0 10px;
+    text-align: right;
+}
+
+/* Task results */
+.task-result {
+    background-color: #f0f8f7;
+    border: 1px solid #ddd;
+    padding: 1em;
+    margin: 0.5em 0;
+    border-radius: 10px;
+}
+
+/* Center content */
+.center {
+    display: flex;
+    justify-content: center;
+}
+
+/* Browser preview */
+.browser-preview {
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    padding: 0.5em;
+    margin: 1em 0;
+    background-color: #f8f9fa;
+}
+
+/* API key form */
+.api-key-form {
+    background-color: #f9f9f9;
+    padding: 1em;
+    border-radius: 10px;
+    margin-bottom: 1em;
+    border: 1px solid #eee;
+}
+
+/* Metric cards */
+.metric-card {
+    background-color: #f0f7ff;
+    padding: 1em;
+    border-radius: 10px;
+    margin: 0.5em;
+    text-align: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.metric-value {
+    font-size: 1.8em;
+    font-weight: bold;
+    color: #1E3B70;
+}
+
+.metric-label {
+    font-size: 0.9em;
+    color: #666;
+}
+
+/* Browse history */
+.browse-history-item {
+    border-bottom: 1px solid #eee;
+    padding: 0.5em 0;
+}
+
+/* Screenshot container */
+.screenshot-container {
+    text-align: center;
+    margin: 1em 0;
+}
+
+/* Quantum circuit visualization */
+.circuit-visualization {
+    background-color: #f0f0f0;
+    border-radius: 10px;
+    padding: 1em;
+    margin: 1em 0;
+    overflow-x: auto;
+}
+
+/* Factorization tree */
+.factorization-tree {
+    background-color: #f5f5f5;
+    border-radius: 10px;
+    padding: 1em;
+    margin: 1em 0;
+}
+
+/* Enhanced navigation */
+.navigation-button {
+    background-color: #29539B;
+    color: white;
+    padding: 0.5em 1em;
+    border-radius: 5px;
+    text-align: center;
+    margin: 0.5em 0;
+    cursor: pointer;
+}
+
+.navigation-button:hover {
+    background-color: #1E3B70;
+}
+
+/* Footer */
+.footer {
+    text-align: center;
+    color: #888888;
+    font-size: 0.8em;
+    margin-top: 2em;
+    padding-top: 1em;
+    border-top: 1px solid #eee;
+}
