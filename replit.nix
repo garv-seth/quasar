@@ -1,5 +1,11 @@
 {pkgs}: {
   deps = [
+    pkgs.libGLU
+    pkgs.libGL
+    pkgs.qhull
+    pkgs.pkg-config
+    pkgs.gobject-introspection
+    pkgs.ghostscript
     pkgs.zlib
     pkgs.tk
     pkgs.tcl

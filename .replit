@@ -17,30 +17,19 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Streamlit App"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "Setup Packages"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "Install Playwright Dependencies"
 
-[[workflows.workflow]]
-name = "Streamlit App"
-author = "agent"
-
-[workflows.workflow.metadata]
-agentRequireRestartOnSave = false
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Install Dependencies"
 
 [[workflows.workflow.tasks]]
-task = "packager.installForAll"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "streamlit run streamlit_app.py --server.address 0.0.0.0 --server.port 5000"
-waitForPort = 5000
+task = "workflow.run"
+args = "Agentic Quantum App"
 
 [[workflows.workflow]]
 name = "Setup Packages"
@@ -69,6 +58,35 @@ task = "packager.installForAll"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python install_deps.py"
+
+[[workflows.workflow]]
+name = "Install Dependencies"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pip install matplotlib"
+
+[[workflows.workflow]]
+name = "Agentic Quantum App"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "streamlit run agentic_quantum_app.py --server.address 0.0.0.0 --server.port 5000"
+waitForPort = 5000
 
 [[ports]]
 localPort = 5000

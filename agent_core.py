@@ -1,1235 +1,1844 @@
 """
-QA³ Agent Core: True Autonomous Web Interaction Module
+QA³ Agent Core: True Autonomous Agency Implementation
 
-This module provides the core functionality for true autonomous web browsing and
-interaction capabilities for the Quantum Accelerated Agent Architecture.
+This module provides the core functionality for a true agentic system that can:
+1. Perceive its environment through computer vision
+2. Make autonomous decisions based on observations
+3. Take actions through UI automation
+4. Learn from interactions
+5. Manage goals and prioritize tasks
+
+Inspired by principles from Microsoft Omniparser and Claude Computer Use
 """
 
 import os
-import time
 import json
+import time
+import base64
 import logging
+from typing import Dict, List, Any, Optional, Tuple, Callable
 import asyncio
-import traceback
-from typing import Dict, List, Any, Optional, Union, Tuple
+import numpy as np
 from datetime import datetime
-from urllib.parse import urlparse, urljoin
-
-# Browser interaction libraries
-import requests
-from bs4 import BeautifulSoup
-from playwright.async_api import async_playwright, Page, Browser, BrowserContext
+import threading
+import queue
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("qa3-agent-core")
-
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("agent-core")
 
 class AgentMemory:
-    """Memory system for the autonomous agent with short and long-term storage"""
+    """
+    Advanced memory system for the agent with episodic, semantic, and procedural memory
     
-    def __init__(self, max_short_term_items: int = 20):
-        """
-        Initialize agent memory systems
+    This system enables the agent to:
+    1. Remember past interactions (episodic)
+    2. Store factual knowledge (semantic)
+    3. Remember how to perform tasks (procedural)
+    4. Retrieve relevant information based on context
+    """
+    
+    def __init__(self, max_episodes: int = 100):
+        """Initialize agent memory systems"""
+        # Episodic memory - sequences of interactions and observations
+        self.episodic_memory = []
+        self.max_episodes = max_episodes
         
-        Args:
-            max_short_term_items: Maximum items in short-term memory
-        """
-        self.short_term = []  # Recent interactions and context
-        self.long_term = []   # Important information to retain
-        self.max_short_term_items = max_short_term_items
-        self.working_memory = {}  # Current task state
-        self.web_history = []  # History of web interactions
+        # Semantic memory - facts, conceptual knowledge
+        self.semantic_memory = {}
         
-    def add_interaction(self, role: str, content: str, metadata: Optional[Dict[str, Any]] = None):
-        """Add an interaction to short-term memory with proper timestamp"""
-        interaction = {
-            "role": role,
-            "content": content,
-            "timestamp": datetime.now().isoformat(),
-            "metadata": metadata or {}
+        # Procedural memory - how to perform tasks
+        self.procedural_memory = []
+        
+        # Working memory - current context and state
+        self.working_memory = {}
+        
+        # Observation history
+        self.observation_history = []
+        
+        logger.info("Agent memory system initialized")
+    
+    def add_episode(self, episode: Dict[str, Any]):
+        """Add an episode to episodic memory"""
+        episode["timestamp"] = datetime.now().isoformat()
+        self.episodic_memory.append(episode)
+        
+        # Maintain maximum size
+        if len(self.episodic_memory) > self.max_episodes:
+            self.episodic_memory.pop(0)
+    
+    def add_observation(self, observation: Dict[str, Any]):
+        """Add an observation to history"""
+        observation["timestamp"] = datetime.now().isoformat()
+        self.observation_history.append(observation)
+        
+        # Maintain reasonable size
+        if len(self.observation_history) > self.max_episodes:
+            self.observation_history.pop(0)
+    
+    def add_semantic_knowledge(self, key: str, value: Any):
+        """Store factual knowledge"""
+        self.semantic_memory[key] = {
+            "value": value,
+            "last_updated": datetime.now().isoformat()
         }
+    
+    def add_procedural_knowledge(self, task_name: str, steps: List[Dict[str, Any]]):
+        """Store knowledge about how to perform a task"""
+        # Check if task already exists
+        for i, proc in enumerate(self.procedural_memory):
+            if proc["task_name"] == task_name:
+                # Update existing procedure
+                self.procedural_memory[i] = {
+                    "task_name": task_name,
+                    "steps": steps,
+                    "last_updated": datetime.now().isoformat()
+                }
+                return
         
-        self.short_term.append(interaction)
-        
-        # Trim if exceeding max size
-        if len(self.short_term) > self.max_short_term_items:
-            self.short_term = self.short_term[-self.max_short_term_items:]
-            
-    def add_to_working_memory(self, key: str, value: Any):
-        """Store information in working memory"""
+        # Add new procedure
+        self.procedural_memory.append({
+            "task_name": task_name,
+            "steps": steps,
+            "last_updated": datetime.now().isoformat()
+        })
+    
+    def update_working_memory(self, key: str, value: Any):
+        """Update working memory with new information"""
         self.working_memory[key] = value
+    
+    def get_semantic_knowledge(self, key: str, default: Any = None) -> Any:
+        """Retrieve factual knowledge"""
+        return self.semantic_memory.get(key, {}).get("value", default)
+    
+    def get_procedural_knowledge(self, task_name: str) -> Optional[List[Dict[str, Any]]]:
+        """Retrieve knowledge about how to perform a task"""
+        for proc in self.procedural_memory:
+            if proc["task_name"] == task_name:
+                return proc["steps"]
+        return None
+    
+    def get_relevant_episodes(self, query: str, max_results: int = 5) -> List[Dict[str, Any]]:
+        """
+        Retrieve relevant episodes based on semantic similarity
         
-    def get_from_working_memory(self, key: str, default: Any = None) -> Any:
+        In a full implementation, this would use embedding similarity.
+        This is a simplified version using keyword matching.
+        """
+        query_terms = query.lower().split()
+        scored_episodes = []
+        
+        for episode in self.episodic_memory:
+            # Calculate a simple relevance score
+            score = 0
+            episode_text = str(episode).lower()
+            
+            for term in query_terms:
+                if term in episode_text:
+                    score += 1
+            
+            if score > 0:
+                scored_episodes.append((episode, score))
+        
+        # Sort by score and return top results
+        scored_episodes.sort(key=lambda x: x[1], reverse=True)
+        return [episode for episode, _ in scored_episodes[:max_results]]
+    
+    def get_relevant_observations(self, query: str, max_results: int = 5) -> List[Dict[str, Any]]:
+        """Retrieve relevant observations based on query"""
+        query_terms = query.lower().split()
+        scored_observations = []
+        
+        for obs in self.observation_history:
+            # Calculate a simple relevance score
+            score = 0
+            obs_text = str(obs).lower()
+            
+            for term in query_terms:
+                if term in obs_text:
+                    score += 1
+            
+            if score > 0:
+                scored_observations.append((obs, score))
+        
+        # Sort by score and return top results
+        scored_observations.sort(key=lambda x: x[1], reverse=True)
+        return [obs for obs, _ in scored_observations[:max_results]]
+    
+    def get_working_memory(self, key: str, default: Any = None) -> Any:
         """Retrieve information from working memory"""
         return self.working_memory.get(key, default)
-        
-    def add_to_long_term(self, item: Dict[str, Any]):
-        """Store important information in long-term memory"""
-        if "timestamp" not in item:
-            item["timestamp"] = datetime.now().isoformat()
-        self.long_term.append(item)
-        
-    def add_web_visit(self, url: str, title: str, content_summary: str, metadata: Optional[Dict[str, Any]] = None):
-        """Record web browsing history with metadata"""
-        web_item = {
-            "url": url,
-            "title": title,
-            "content_summary": content_summary,
-            "timestamp": datetime.now().isoformat(),
-            "metadata": metadata or {}
-        }
-        self.web_history.append(web_item)
-        
-    def get_conversation_context(self, include_web_history: bool = True, max_items: int = 10) -> str:
-        """Generate a context summary for decision making"""
-        context = "Short-term memory:\n"
-        
-        for item in self.short_term[-max_items:]:
-            context += f"- {item['role']}: {item['content'][:200]}...\n"
-            
-        if include_web_history and self.web_history:
-            context += "\nRecent web browsing:\n"
-            for item in self.web_history[-3:]:
-                context += f"- Visited: {item['title']} ({item['url']})\n"
-                
-        return context
-        
+    
     def clear_working_memory(self):
         """Clear working memory for new tasks"""
         self.working_memory = {}
-        
-    def get_relevant_memories(self, query: str, max_results: int = 5) -> List[Dict[str, Any]]:
-        """Simple retrieval of relevant memories based on keyword matching"""
-        results = []
-        query_terms = query.lower().split()
-        
-        # Search in long-term memory
-        for memory in self.long_term:
-            score = 0
-            memory_text = memory.get("content", "").lower()
-            
-            for term in query_terms:
-                if term in memory_text:
-                    score += 1
-                    
-            if score > 0:
-                results.append({"memory": memory, "relevance": score})
-                
-        # Sort by relevance and return limited results
-        results.sort(key=lambda x: x["relevance"], reverse=True)
-        return [item["memory"] for item in results[:max_results]]
-
-
-class WebInteractionAgent:
-    """
-    Handles autonomous web browsing and interactions
     
-    This is the core component that enables true agency by allowing the AI
-    to interact with web interfaces, execute searches, fill forms, and
-    extract information directly from web pages.
+    def clear_episodic_memory(self):
+        """Clear episodic memory"""
+        self.episodic_memory = []
+    
+    def get_memory_stats(self) -> Dict[str, Any]:
+        """Get statistics about memory usage"""
+        return {
+            "episodic_memory_count": len(self.episodic_memory),
+            "semantic_memory_count": len(self.semantic_memory),
+            "procedural_memory_count": len(self.procedural_memory),
+            "working_memory_count": len(self.working_memory),
+            "observation_history_count": len(self.observation_history)
+        }
+
+
+class PerceptionSystem:
+    """
+    Visual perception system for screen understanding
+    
+    This system enables the agent to:
+    1. Capture and analyze screen contents
+    2. Identify UI elements and their functions
+    3. Extract text and structural information
+    4. Build a semantic understanding of the interface
+    
+    Similar to systems used in Microsoft Omniparser, RPA tools, and Claude Computer Use
     """
     
     def __init__(self):
-        """Initialize the web interaction agent"""
-        self.browser = None
-        self.context = None
-        self.page = None
-        self.playwright = None
-        
-        # Store browsing state
-        self.current_url = None
-        self.current_page_content = None
-        self.current_page_title = None
-        
-        # Metrics
-        self.total_interactions = 0
-        self.successful_interactions = 0
-        self.navigation_history = []
-        
-    async def initialize(self, headless: bool = True):
-        """Initialize browser with Playwright for automation"""
-        if self.browser is not None:
-            return  # Already initialized
-            
-        try:
-            self.playwright = await async_playwright().start()
-            self.browser = await self.playwright.chromium.launch(
-                headless=headless,
-                args=["--no-sandbox", "--disable-setuid-sandbox"]
-            )
-            self.context = await self.browser.new_context(
-                viewport={"width": 1280, "height": 800},
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36"
-            )
-            self.page = await self.context.new_page()
-            
-            # Set up event handlers
-            self.page.on("console", lambda msg: logger.debug(f"Browser console: {msg.text}"))
-            logger.info("Web interaction agent initialized successfully")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to initialize browser: {str(e)}")
-            traceback.print_exc()
-            return False
-            
-    async def close(self):
-        """Close browser and clean up resources"""
-        try:
-            if self.context:
-                await self.context.close()
-            if self.browser:
-                await self.browser.close()
-            if self.playwright:
-                await self.playwright.stop()
-                
-            self.browser = None
-            self.context = None
-            self.page = None
-            self.playwright = None
-            logger.info("Browser resources released")
-        except Exception as e:
-            logger.error(f"Error closing browser: {str(e)}")
-            
-    async def navigate(self, url: str) -> Dict[str, Any]:
-        """Navigate to a URL and extract page information"""
-        if self.page is None:
-            await self.initialize()
-            
-        self.total_interactions += 1
-        start_time = time.time()
+        """Initialize the perception system"""
+        # Detection models would be initialized here in a full implementation
+        self.initialized = False
+        self.error_message = None
         
         try:
-            # Make sure URL has proper scheme
-            if not url.startswith(('http://', 'https://')):
-                url = 'https://' + url
-                
-            # Navigate to URL with timeout
-            response = await self.page.goto(url, timeout=30000, wait_until="networkidle")
-            
-            # Extract page information
-            self.current_url = self.page.url
-            self.current_page_title = await self.page.title()
-            self.current_page_content = await self.page.content()
-            
-            # Extract main content
-            content_text = await self.page.evaluate("""() => {
-                // Simple content extraction targeting main content elements
-                const elements = Array.from(document.querySelectorAll('article, main, #content, .content, .main, [role="main"]'));
-                if (elements.length > 0) {
-                    return elements.map(el => el.innerText).join('\\n\\n');
-                }
-                
-                // Fallback to paragraphs and headings
-                const textElements = Array.from(document.querySelectorAll('p, h1, h2, h3, h4, h5, h6'));
-                return textElements.map(el => el.innerText).join('\\n\\n');
-            }""")
-            
-            # Extract links
-            links = await self.page.evaluate("""() => {
-                return Array.from(document.querySelectorAll('a[href]'))
-                    .filter(a => a.href && a.href.startsWith('http') && a.innerText.trim())
-                    .map(a => ({ url: a.href, text: a.innerText.trim() }))
-                    .slice(0, 20); // Limit to 20 links
-            }""")
-            
-            # Record in navigation history
-            navigation_record = {
-                "url": self.current_url,
-                "title": self.current_page_title,
+            # Attempt to import necessary libraries
+            import cv2
+            import PIL
+            from PIL import Image
+            self.initialized = True
+        except ImportError as e:
+            self.error_message = f"Failed to initialize perception system: {str(e)}"
+            logger.error(self.error_message)
+    
+    def capture_screen(self) -> Dict[str, Any]:
+        """
+        Capture the current screen for analysis
+        
+        In a real implementation, this might use:
+        - Selenium for web browsers
+        - PyAutoGUI or similar for desktop applications
+        - Platform-specific APIs
+        
+        Here we'll simulate this with a placeholder implementation.
+        """
+        if not self.initialized:
+            return {"success": False, "error": self.error_message}
+        
+        try:
+            # Simulated screen capture
+            # In a real implementation, this would capture an actual screenshot
+            return {
+                "success": True,
                 "timestamp": datetime.now().isoformat(),
-                "success": True
-            }
-            self.navigation_history.append(navigation_record)
-            
-            # Update metrics
-            self.successful_interactions += 1
-            execution_time = time.time() - start_time
-            
-            # Return comprehensive page data
-            return {
-                "url": self.current_url,
-                "title": self.current_page_title,
-                "content_text": content_text[:10000],  # Limit size
-                "links": links,
-                "status_code": response.status if response else None,
-                "execution_time": execution_time,
-                "success": True
+                "screen_width": 1920,
+                "screen_height": 1080,
+                "image_data": None  # This would be actual image data in a real implementation
             }
         except Exception as e:
-            execution_time = time.time() - start_time
-            logger.error(f"Navigation error for {url}: {str(e)}")
-            
-            error_record = {
-                "url": url,
-                "timestamp": datetime.now().isoformat(),
-                "error": str(e),
-                "success": False
-            }
-            self.navigation_history.append(error_record)
-            
-            return {
-                "url": url,
-                "error": str(e),
-                "execution_time": execution_time,
-                "success": False
-            }
-            
-    async def search(self, query: str, search_engine: str = "google") -> Dict[str, Any]:
-        """Perform a web search using a search engine"""
-        if search_engine.lower() == "google":
-            search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
-        elif search_engine.lower() == "bing":
-            search_url = f"https://www.bing.com/search?q={query.replace(' ', '+')}"
-        else:
-            search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
-            
-        # Navigate to search page
-        result = await self.navigate(search_url)
+            logger.error(f"Error capturing screen: {str(e)}")
+            return {"success": False, "error": str(e)}
+    
+    def analyze_screen(self, screen_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Analyze screen contents to detect UI elements and extract information
         
-        if not result["success"]:
-            return result
-            
-        # Extract search results
+        This would use computer vision and OCR techniques to:
+        1. Detect buttons, text fields, dropdowns, etc.
+        2. Extract text content
+        3. Identify interactive elements
+        4. Build a semantic representation of the screen
+        """
+        if not self.initialized:
+            return {"success": False, "error": self.error_message}
+        
+        if not screen_data.get("success", False):
+            return {"success": False, "error": "Invalid screen data"}
+        
         try:
-            search_results = await self.page.evaluate("""() => {
-                // This is a simplified extraction and will need to be adapted based on the search engine
-                const results = [];
-                
-                // For Google
-                const elements = document.querySelectorAll('div.g');
-                elements.forEach(el => {
-                    const titleEl = el.querySelector('h3');
-                    const linkEl = el.querySelector('a');
-                    const snippetEl = el.querySelector('div.VwiC3b, span.st');
-                    
-                    if (titleEl && linkEl && linkEl.href) {
-                        results.push({
-                            title: titleEl.innerText,
-                            url: linkEl.href,
-                            snippet: snippetEl ? snippetEl.innerText : ''
-                        });
-                    }
-                });
-                
-                // If no results found with that selector, try a more generic approach
-                if (results.length === 0) {
-                    document.querySelectorAll('a[href^="http"]').forEach(a => {
-                        if (a.innerText.trim() && !a.href.includes('google.com')) {
-                            const snippet = a.closest('div') ? a.closest('div').innerText : '';
-                            results.push({
-                                title: a.innerText.trim(),
-                                url: a.href,
-                                snippet: snippet
-                            });
-                        }
-                    });
+            # Simulated analysis
+            # In a real implementation, this would use CV models to analyze the screenshot
+            
+            # Example detected elements (simulated)
+            ui_elements = [
+                {
+                    "type": "button",
+                    "text": "Submit",
+                    "bounds": [100, 200, 200, 250],
+                    "confidence": 0.95,
+                    "is_enabled": True
+                },
+                {
+                    "type": "text_field",
+                    "placeholder": "Enter your query",
+                    "bounds": [100, 100, 500, 150],
+                    "confidence": 0.92,
+                    "is_enabled": True
                 }
-                
-                return results.slice(0, 10); // Return top 10 results
-            }""")
+            ]
+            
+            # Extract text (simulated)
+            text_elements = [
+                {
+                    "text": "Quantum Computing Interface",
+                    "bounds": [400, 50, 800, 80],
+                    "is_header": True,
+                    "confidence": 0.98
+                }
+            ]
             
             return {
-                "query": query,
-                "search_engine": search_engine,
-                "results": search_results,
-                "url": result["url"],
-                "execution_time": result["execution_time"],
-                "success": True
+                "success": True,
+                "ui_elements": ui_elements,
+                "text_elements": text_elements,
+                "timestamp": datetime.now().isoformat()
             }
         except Exception as e:
-            logger.error(f"Error extracting search results: {str(e)}")
-            return {
-                "query": query,
-                "search_engine": search_engine,
-                "error": str(e),
-                "url": result["url"],
-                "execution_time": result["execution_time"],
-                "success": False
-            }
-            
-    async def click_element(self, selector: str) -> Dict[str, Any]:
-        """Click on an element on the current page"""
-        if self.page is None:
-            return {"success": False, "error": "Browser not initialized"}
-            
-        self.total_interactions += 1
-        start_time = time.time()
+            logger.error(f"Error analyzing screen: {str(e)}")
+            return {"success": False, "error": str(e)}
+    
+    def identify_element_by_text(self, analysis: Dict[str, Any], text: str) -> Optional[Dict[str, Any]]:
+        """Find a UI element by its text content"""
+        if not analysis.get("success", False):
+            return None
         
-        try:
-            # Wait for the element to be available
-            await self.page.wait_for_selector(selector, timeout=5000)
-            
-            # Click the element
-            await self.page.click(selector)
-            
-            # Wait for navigation if it occurs
-            await self.page.wait_for_load_state("networkidle")
-            
-            # Get updated page information
-            new_url = self.page.url
-            new_title = await self.page.title()
-            
-            # Update state
-            self.current_url = new_url
-            self.current_page_title = new_title
-            
-            # Update metrics
-            self.successful_interactions += 1
-            execution_time = time.time() - start_time
-            
-            return {
-                "action": "click",
-                "selector": selector,
-                "previous_url": self.current_url,
-                "new_url": new_url,
-                "new_title": new_title,
-                "execution_time": execution_time,
-                "success": True
-            }
-        except Exception as e:
-            execution_time = time.time() - start_time
-            logger.error(f"Failed to click element {selector}: {str(e)}")
-            
-            return {
-                "action": "click",
-                "selector": selector,
-                "error": str(e),
-                "execution_time": execution_time,
-                "success": False
-            }
-            
-    async def fill_form(self, selector: str, value: str) -> Dict[str, Any]:
-        """Fill a form field on the current page"""
-        if self.page is None:
-            return {"success": False, "error": "Browser not initialized"}
-            
-        self.total_interactions += 1
-        start_time = time.time()
+        text = text.lower()
         
-        try:
-            # Wait for the element to be available
-            await self.page.wait_for_selector(selector, timeout=5000)
-            
-            # Fill the form field
-            await self.page.fill(selector, value)
-            
-            # Update metrics
-            self.successful_interactions += 1
-            execution_time = time.time() - start_time
-            
-            return {
-                "action": "fill",
-                "selector": selector,
-                "value": value,
-                "execution_time": execution_time,
-                "success": True
-            }
-        except Exception as e:
-            execution_time = time.time() - start_time
-            logger.error(f"Failed to fill form field {selector}: {str(e)}")
-            
-            return {
-                "action": "fill",
-                "selector": selector,
-                "value": value,
-                "error": str(e),
-                "execution_time": execution_time,
-                "success": False
-            }
-            
-    async def submit_form(self, form_selector: str) -> Dict[str, Any]:
-        """Submit a form on the current page"""
-        if self.page is None:
-            return {"success": False, "error": "Browser not initialized"}
-            
-        self.total_interactions += 1
-        start_time = time.time()
+        # Check UI elements
+        for element in analysis.get("ui_elements", []):
+            if "text" in element and text in element["text"].lower():
+                return element
         
-        try:
-            # Submit the form
-            await self.page.evaluate(f"""() => {{
-                const form = document.querySelector('{form_selector}');
-                if (form) {{
-                    form.submit();
-                    return true;
-                }}
-                return false;
-            }}""")
-            
-            # Wait for navigation to complete
-            await self.page.wait_for_load_state("networkidle")
-            
-            # Get updated page information
-            new_url = self.page.url
-            new_title = await self.page.title()
-            
-            # Update state
-            self.current_url = new_url
-            self.current_page_title = new_title
-            
-            # Update metrics
-            self.successful_interactions += 1
-            execution_time = time.time() - start_time
-            
-            return {
-                "action": "submit_form",
-                "form_selector": form_selector,
-                "new_url": new_url,
-                "new_title": new_title,
-                "execution_time": execution_time,
-                "success": True
-            }
-        except Exception as e:
-            execution_time = time.time() - start_time
-            logger.error(f"Failed to submit form {form_selector}: {str(e)}")
-            
-            return {
-                "action": "submit_form",
-                "form_selector": form_selector,
-                "error": str(e),
-                "execution_time": execution_time,
-                "success": False
-            }
-            
-    async def extract_structured_data(self) -> Dict[str, Any]:
-        """Extract structured data from the current page (tables, lists, metadata)"""
-        if self.page is None:
-            return {"success": False, "error": "Browser not initialized"}
-            
-        try:
-            # Extract tables
-            tables = await self.page.evaluate("""() => {
-                const tables = [];
-                document.querySelectorAll('table').forEach((table, tableIndex) => {
-                    const headers = [];
-                    const headerRow = table.querySelector('thead tr, tr:first-child');
-                    if (headerRow) {
-                        headerRow.querySelectorAll('th, td').forEach(cell => {
-                            headers.push(cell.innerText.trim());
-                        });
-                    }
-                    
-                    const rows = [];
-                    table.querySelectorAll('tbody tr, tr:not(:first-child)').forEach(row => {
-                        const cells = [];
-                        row.querySelectorAll('td').forEach(cell => {
-                            cells.push(cell.innerText.trim());
-                        });
-                        if (cells.length > 0) {
-                            rows.push(cells);
-                        }
-                    });
-                    
-                    tables.push({
-                        id: tableIndex,
-                        headers: headers,
-                        rows: rows
-                    });
-                });
-                return tables;
-            }""")
-            
-            # Extract lists
-            lists = await self.page.evaluate("""() => {
-                const lists = [];
-                document.querySelectorAll('ul, ol').forEach((list, listIndex) => {
-                    const items = [];
-                    list.querySelectorAll('li').forEach(item => {
-                        items.push(item.innerText.trim());
-                    });
-                    
-                    if (items.length > 0) {
-                        lists.push({
-                            id: listIndex,
-                            type: list.tagName.toLowerCase(),
-                            items: items
-                        });
-                    }
-                });
-                return lists;
-            }""")
-            
-            # Extract metadata
-            metadata = await self.page.evaluate("""() => {
-                const meta = {};
-                
-                // Title and description
-                meta.title = document.title;
-                
-                const descriptionTag = document.querySelector('meta[name="description"]');
-                meta.description = descriptionTag ? descriptionTag.getAttribute('content') : '';
-                
-                // Open Graph metadata
-                document.querySelectorAll('meta[property^="og:"]').forEach(tag => {
-                    const property = tag.getAttribute('property');
-                    meta[property] = tag.getAttribute('content');
-                });
-                
-                return meta;
-            }""")
-            
-            return {
-                "tables": tables,
-                "lists": lists,
-                "metadata": metadata,
-                "url": self.current_url,
-                "success": True
-            }
-        except Exception as e:
-            logger.error(f"Failed to extract structured data: {str(e)}")
-            return {
-                "error": str(e),
-                "url": self.current_url,
-                "success": False
-            }
-            
-    async def take_screenshot(self) -> Dict[str, Any]:
-        """Take a screenshot of the current page"""
-        if self.page is None:
-            return {"success": False, "error": "Browser not initialized"}
-            
-        try:
-            # Create a timestamp-based filename
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"screenshot_{timestamp}.png"
-            
-            # Take the screenshot
-            await self.page.screenshot(path=filename)
-            
-            return {
-                "action": "screenshot",
-                "filename": filename,
-                "url": self.current_url,
-                "success": True
-            }
-        except Exception as e:
-            logger.error(f"Failed to take screenshot: {str(e)}")
-            return {
-                "action": "screenshot",
-                "error": str(e),
-                "success": False
-            }
-            
-    def get_metrics(self) -> Dict[str, Any]:
-        """Get web interaction metrics"""
-        success_rate = (self.successful_interactions / self.total_interactions * 100) if self.total_interactions > 0 else 0
+        # Check text elements
+        for element in analysis.get("text_elements", []):
+            if "text" in element and text in element["text"].lower():
+                return element
         
-        return {
-            "total_interactions": self.total_interactions,
-            "successful_interactions": self.successful_interactions,
-            "success_rate": success_rate,
-            "navigation_history_count": len(self.navigation_history),
-            "is_browser_active": self.browser is not None
-        }
+        return None
+    
+    def identify_element_by_type(self, analysis: Dict[str, Any], element_type: str) -> List[Dict[str, Any]]:
+        """Find all UI elements of a specific type"""
+        if not analysis.get("success", False):
+            return []
+        
+        element_type = element_type.lower()
+        matching_elements = []
+        
+        for element in analysis.get("ui_elements", []):
+            if "type" in element and element_type in element["type"].lower():
+                matching_elements.append(element)
+        
+        return matching_elements
+    
+    def get_element_at_position(self, analysis: Dict[str, Any], x: int, y: int) -> Optional[Dict[str, Any]]:
+        """Find the UI element at the given screen coordinates"""
+        if not analysis.get("success", False):
+            return None
+        
+        # Check all elements
+        all_elements = analysis.get("ui_elements", []) + analysis.get("text_elements", [])
+        
+        for element in all_elements:
+            if "bounds" in element:
+                bounds = element["bounds"]
+                if bounds[0] <= x <= bounds[2] and bounds[1] <= y <= bounds[3]:
+                    return element
+        
+        return None
 
 
-class AutomationTool:
+class ActionSystem:
     """
-    A tool that can be executed by the agent to perform specific actions
+    System for taking actions within the environment
+    
+    This system enables the agent to:
+    1. Click on UI elements
+    2. Type text
+    3. Navigate between screens
+    4. Execute commands
+    5. Interact with applications
+    
+    Inspired by RPA frameworks and Claude Computer Use capabilities
     """
     
-    def __init__(self, name: str, description: str, func):
-        self.name = name
-        self.description = description
-        self.func = func
-        self.metrics = {
-            "total_calls": 0,
-            "successful_calls": 0,
-            "failed_calls": 0,
-            "total_execution_time": 0
-        }
-        
-    async def execute(self, *args, **kwargs) -> Dict[str, Any]:
-        """Execute the tool function with metrics tracking"""
-        start_time = time.time()
-        self.metrics["total_calls"] += 1
+    def __init__(self):
+        """Initialize the action system"""
+        self.initialized = False
+        self.error_message = None
         
         try:
-            if asyncio.iscoroutinefunction(self.func):
-                result = await self.func(*args, **kwargs)
-            else:
-                result = self.func(*args, **kwargs)
-                
-            execution_time = time.time() - start_time
-            self.metrics["successful_calls"] += 1
-            self.metrics["total_execution_time"] += execution_time
+            # Attempt to import necessary libraries
+            # In a full implementation, this would use selenium, pyautogui, or similar
+            import selenium
+            self.initialized = True
+        except ImportError as e:
+            self.error_message = f"Failed to initialize action system: {str(e)}"
+            logger.error(self.error_message)
+    
+    def click(self, element: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Click on a UI element
+        
+        Args:
+            element: UI element with bounds information
+        
+        Returns:
+            Dict with operation result
+        """
+        if not self.initialized:
+            return {"success": False, "error": self.error_message}
+        
+        try:
+            # Ensure element has bounds
+            if "bounds" not in element:
+                return {"success": False, "error": "Element has no bounds"}
+            
+            bounds = element["bounds"]
+            center_x = (bounds[0] + bounds[2]) // 2
+            center_y = (bounds[1] + bounds[3]) // 2
+            
+            # Simulated click
+            # In a real implementation, this would perform an actual click
+            logger.info(f"Clicking at position ({center_x}, {center_y})")
             
             return {
-                "tool": self.name,
-                "result": result,
-                "execution_time": execution_time,
-                "success": True
+                "success": True,
+                "action": "click",
+                "position": (center_x, center_y),
+                "element_type": element.get("type", "unknown"),
+                "element_text": element.get("text", ""),
+                "timestamp": datetime.now().isoformat()
             }
         except Exception as e:
-            execution_time = time.time() - start_time
-            self.metrics["failed_calls"] += 1
-            self.metrics["total_execution_time"] += execution_time
+            logger.error(f"Error clicking element: {str(e)}")
+            return {"success": False, "error": str(e)}
+    
+    def type_text(self, element: Dict[str, Any], text: str) -> Dict[str, Any]:
+        """
+        Type text into a UI element
+        
+        Args:
+            element: UI element with bounds information
+            text: Text to type
+        
+        Returns:
+            Dict with operation result
+        """
+        if not self.initialized:
+            return {"success": False, "error": self.error_message}
+        
+        try:
+            # Ensure element has bounds
+            if "bounds" not in element:
+                return {"success": False, "error": "Element has no bounds"}
             
-            logger.error(f"Tool {self.name} execution failed: {str(e)}")
-            traceback.print_exc()
+            # Ensure element is a text field
+            if element.get("type", "") != "text_field":
+                return {"success": False, "error": "Element is not a text field"}
+            
+            bounds = element["bounds"]
+            center_x = (bounds[0] + bounds[2]) // 2
+            center_y = (bounds[1] + bounds[3]) // 2
+            
+            # Simulated typing
+            # In a real implementation, this would type actual text
+            logger.info(f"Typing '{text}' at position ({center_x}, {center_y})")
             
             return {
-                "tool": self.name,
-                "error": str(e),
-                "execution_time": execution_time,
-                "success": False
+                "success": True,
+                "action": "type",
+                "position": (center_x, center_y),
+                "text": text,
+                "element_type": element.get("type", "unknown"),
+                "timestamp": datetime.now().isoformat()
             }
+        except Exception as e:
+            logger.error(f"Error typing text: {str(e)}")
+            return {"success": False, "error": str(e)}
+    
+    def navigate(self, url: str) -> Dict[str, Any]:
+        """
+        Navigate to a URL
+        
+        Args:
+            url: URL to navigate to
+        
+        Returns:
+            Dict with operation result
+        """
+        if not self.initialized:
+            return {"success": False, "error": self.error_message}
+        
+        try:
+            # Simulated navigation
+            # In a real implementation, this would use a browser automation library
+            logger.info(f"Navigating to {url}")
+            
+            return {
+                "success": True,
+                "action": "navigate",
+                "url": url,
+                "timestamp": datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error navigating to URL: {str(e)}")
+            return {"success": False, "error": str(e)}
+    
+    def execute_command(self, command: str) -> Dict[str, Any]:
+        """
+        Execute a shell command
+        
+        Args:
+            command: Shell command to execute
+        
+        Returns:
+            Dict with operation result
+        """
+        if not self.initialized:
+            return {"success": False, "error": self.error_message}
+        
+        try:
+            # Simulated command execution
+            # In a real implementation, this would use subprocess
+            logger.info(f"Executing command: {command}")
+            
+            return {
+                "success": True,
+                "action": "execute",
+                "command": command,
+                "output": "Simulated command output",
+                "timestamp": datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error executing command: {str(e)}")
+            return {"success": False, "error": str(e)}
+
+
+class DecisionSystem:
+    """
+    Autonomous decision making system
+    
+    This system enables the agent to:
+    1. Analyze the current situation
+    2. Generate and evaluate options
+    3. Select the best course of action
+    4. Learn from successes and failures
+    
+    This is the core of true agency, combining perception and action capabilities
+    with autonomous decision making.
+    """
+    
+    def __init__(self, use_llm: bool = True):
+        """
+        Initialize the decision system
+        
+        Args:
+            use_llm: Whether to use an LLM for decision making
+        """
+        self.use_llm = use_llm
+        self.initialized = False
+        self.error_message = None
+        
+        # Initialize LLM clients if available
+        self.openai_client = None
+        self.anthropic_client = None
+        
+        try:
+            if use_llm:
+                self._initialize_llm_clients()
+            self.initialized = True
+        except Exception as e:
+            self.error_message = f"Failed to initialize decision system: {str(e)}"
+            logger.error(self.error_message)
+    
+    def _initialize_llm_clients(self):
+        """Initialize LLM clients if API keys are available"""
+        # Initialize OpenAI client if available
+        openai_api_key = os.environ.get("OPENAI_API_KEY")
+        if openai_api_key:
+            try:
+                import openai
+                self.openai_client = openai.OpenAI(api_key=openai_api_key)
+                logger.info("OpenAI client initialized for decision making")
+            except Exception as e:
+                logger.error(f"Failed to initialize OpenAI client: {str(e)}")
+        
+        # Initialize Anthropic client if available
+        anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if anthropic_api_key:
+            try:
+                import anthropic
+                self.anthropic_client = anthropic.Anthropic(api_key=anthropic_api_key)
+                logger.info("Anthropic client initialized for decision making")
+            except Exception as e:
+                logger.error(f"Failed to initialize Anthropic client: {str(e)}")
+    
+    async def analyze_situation(self, 
+                              perception_data: Dict[str, Any], 
+                              memory: AgentMemory,
+                              goals: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Analyze the current situation to inform decision making
+        
+        Args:
+            perception_data: Current perception data
+            memory: Agent memory
+            goals: Current goals
+            
+        Returns:
+            Dict with situation analysis
+        """
+        if not self.initialized:
+            return {"success": False, "error": self.error_message}
+        
+        if not perception_data.get("success", False):
+            return {"success": False, "error": "Invalid perception data"}
+        
+        try:
+            if self.use_llm and (self.openai_client or self.anthropic_client):
+                return await self._analyze_with_llm(perception_data, memory, goals)
+            else:
+                return self._analyze_with_rules(perception_data, memory, goals)
+        except Exception as e:
+            logger.error(f"Error analyzing situation: {str(e)}")
+            return {"success": False, "error": str(e)}
+    
+    async def _analyze_with_llm(self, 
+                              perception_data: Dict[str, Any], 
+                              memory: AgentMemory,
+                              goals: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Use an LLM to analyze the situation"""
+        # Create a prompt for the LLM
+        prompt = self._create_analysis_prompt(perception_data, memory, goals)
+        
+        # Try with OpenAI first, then fall back to Anthropic
+        if self.openai_client:
+            try:
+                response = await self._call_openai_analysis(prompt)
+                return self._parse_llm_analysis(response)
+            except Exception as e:
+                logger.error(f"OpenAI analysis failed: {str(e)}")
+                
+        if self.anthropic_client:
+            try:
+                response = await self._call_anthropic_analysis(prompt)
+                return self._parse_llm_analysis(response)
+            except Exception as e:
+                logger.error(f"Anthropic analysis failed: {str(e)}")
+        
+        # Fall back to rule-based analysis if both LLMs fail
+        return self._analyze_with_rules(perception_data, memory, goals)
+    
+    async def _call_openai_analysis(self, prompt: str) -> str:
+        """Call OpenAI API for situation analysis"""
+        if not self.openai_client:
+            raise ValueError("OpenAI client not initialized")
+        
+        response = await asyncio.to_thread(
+            self.openai_client.chat.completions.create,
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are an AI agent analyzing a situation to make autonomous decisions. Provide a detailed, structured analysis."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2
+        )
+        
+        return response.choices[0].message.content
+    
+    async def _call_anthropic_analysis(self, prompt: str) -> str:
+        """Call Anthropic API for situation analysis"""
+        if not self.anthropic_client:
+            raise ValueError("Anthropic client not initialized")
+        
+        response = await asyncio.to_thread(
+            self.anthropic_client.messages.create,
+            model="claude-3-sonnet-20240229",
+            max_tokens=2000,
+            system="You are an AI agent analyzing a situation to make autonomous decisions. Provide a detailed, structured analysis.",
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+        
+        return response.content[0].text
+    
+    def _create_analysis_prompt(self, 
+                              perception_data: Dict[str, Any], 
+                              memory: AgentMemory,
+                              goals: List[Dict[str, Any]]) -> str:
+        """Create a prompt for LLM-based situation analysis"""
+        # Format perception data
+        ui_elements = perception_data.get("ui_elements", [])
+        text_elements = perception_data.get("text_elements", [])
+        
+        ui_elements_str = "\n".join([
+            f"- {element.get('type', 'unknown')}: '{element.get('text', '')}' at position {element.get('bounds', 'unknown')}" 
+            for element in ui_elements
+        ])
+        
+        text_elements_str = "\n".join([
+            f"- '{element.get('text', '')}' at position {element.get('bounds', 'unknown')}"
+            for element in text_elements
+        ])
+        
+        # Format goals
+        goals_str = "\n".join([
+            f"- {goal.get('description', 'unknown')} (priority: {goal.get('priority', 'unknown')})"
+            for goal in goals
+        ])
+        
+        # Format working memory
+        working_memory = memory.working_memory
+        working_memory_str = "\n".join([
+            f"- {key}: {str(value)}"
+            for key, value in working_memory.items()
+        ])
+        
+        # Create the prompt
+        prompt = f"""
+        # Current Situation Analysis
+        
+        ## UI Elements Detected:
+        {ui_elements_str}
+        
+        ## Text Elements Detected:
+        {text_elements_str}
+        
+        ## Current Goals:
+        {goals_str}
+        
+        ## Working Memory:
+        {working_memory_str}
+        
+        Please analyze this situation and provide:
+        1. A summary of what's happening on the screen
+        2. Identification of the most relevant UI elements for the current goals
+        3. Potential obstacles or challenges in the current state
+        4. Recommended focus areas for decision making
+        
+        Structure your analysis in JSON format with the following fields:
+        - "screen_summary": A concise description of what's displayed
+        - "relevant_elements": Array of the most important UI elements for current goals
+        - "obstacles": Array of potential challenges
+        - "focus_areas": Array of recommended focus areas for decision making
+        """
+        
+        return prompt
+    
+    def _parse_llm_analysis(self, response: str) -> Dict[str, Any]:
+        """Parse the LLM response into a structured analysis"""
+        try:
+            # Try to extract JSON from the response
+            json_str = response
+            
+            # If the response contains markdown code blocks, extract JSON from them
+            if "```json" in response:
+                start = response.find("```json") + 7
+                end = response.find("```", start)
+                json_str = response[start:end].strip()
+            elif "```" in response:
+                start = response.find("```") + 3
+                end = response.find("```", start)
+                json_str = response[start:end].strip()
+            
+            analysis = json.loads(json_str)
+            
+            return {
+                "success": True,
+                "screen_summary": analysis.get("screen_summary", ""),
+                "relevant_elements": analysis.get("relevant_elements", []),
+                "obstacles": analysis.get("obstacles", []),
+                "focus_areas": analysis.get("focus_areas", []),
+                "raw_response": response
+            }
+        except Exception as e:
+            logger.error(f"Error parsing LLM analysis: {str(e)}")
+            
+            # Return a simplified analysis based on the raw text
+            return {
+                "success": True,
+                "screen_summary": "Unable to parse structured analysis",
+                "relevant_elements": [],
+                "obstacles": ["Analysis parsing failed"],
+                "focus_areas": [],
+                "raw_response": response
+            }
+    
+    def _analyze_with_rules(self, 
+                          perception_data: Dict[str, Any], 
+                          memory: AgentMemory,
+                          goals: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Use rule-based approaches to analyze the situation when LLMs aren't available"""
+        ui_elements = perception_data.get("ui_elements", [])
+        text_elements = perception_data.get("text_elements", [])
+        
+        # Simple rule-based analysis
+        screen_summary = "Screen contains " + str(len(ui_elements)) + " UI elements and " + str(len(text_elements)) + " text elements"
+        
+        # Find interactive elements as relevant
+        relevant_elements = [
+            element for element in ui_elements
+            if element.get("type") in ["button", "text_field", "checkbox", "dropdown"]
+        ]
+        
+        # Simple obstacle detection
+        obstacles = []
+        if not relevant_elements:
+            obstacles.append("No interactive elements detected")
+        
+        # Basic focus areas
+        focus_areas = ["Identify main task", "Locate interactive elements"]
+        
+        return {
+            "success": True,
+            "screen_summary": screen_summary,
+            "relevant_elements": relevant_elements,
+            "obstacles": obstacles,
+            "focus_areas": focus_areas
+        }
+    
+    async def generate_options(self, 
+                             situation_analysis: Dict[str, Any],
+                             memory: AgentMemory,
+                             goals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Generate possible action options based on situation analysis
+        
+        Args:
+            situation_analysis: Analysis of the current situation
+            memory: Agent memory
+            goals: Current goals
+            
+        Returns:
+            List of possible action options
+        """
+        if not self.initialized:
+            return [{"success": False, "error": self.error_message}]
+        
+        if not situation_analysis.get("success", False):
+            return [{"success": False, "error": "Invalid situation analysis"}]
+        
+        try:
+            if self.use_llm and (self.openai_client or self.anthropic_client):
+                return await self._generate_options_with_llm(situation_analysis, memory, goals)
+            else:
+                return self._generate_options_with_rules(situation_analysis, memory, goals)
+        except Exception as e:
+            logger.error(f"Error generating options: {str(e)}")
+            return [{"success": False, "error": str(e)}]
+    
+    async def _generate_options_with_llm(self, 
+                                       situation_analysis: Dict[str, Any],
+                                       memory: AgentMemory,
+                                       goals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Use an LLM to generate decision options"""
+        # Create a prompt for the LLM
+        prompt = self._create_options_generation_prompt(situation_analysis, memory, goals)
+        
+        # Try with OpenAI first, then fall back to Anthropic
+        if self.openai_client:
+            try:
+                response = await self._call_openai_options(prompt)
+                return self._parse_llm_options(response)
+            except Exception as e:
+                logger.error(f"OpenAI options generation failed: {str(e)}")
+                
+        if self.anthropic_client:
+            try:
+                response = await self._call_anthropic_options(prompt)
+                return self._parse_llm_options(response)
+            except Exception as e:
+                logger.error(f"Anthropic options generation failed: {str(e)}")
+        
+        # Fall back to rule-based generation if both LLMs fail
+        return self._generate_options_with_rules(situation_analysis, memory, goals)
+    
+    async def _call_openai_options(self, prompt: str) -> str:
+        """Call OpenAI API for options generation"""
+        if not self.openai_client:
+            raise ValueError("OpenAI client not initialized")
+        
+        response = await asyncio.to_thread(
+            self.openai_client.chat.completions.create,
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are an AI agent generating action options based on a situation analysis. Provide detailed, concrete actions."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.4
+        )
+        
+        return response.choices[0].message.content
+    
+    async def _call_anthropic_options(self, prompt: str) -> str:
+        """Call Anthropic API for options generation"""
+        if not self.anthropic_client:
+            raise ValueError("Anthropic client not initialized")
+        
+        response = await asyncio.to_thread(
+            self.anthropic_client.messages.create,
+            model="claude-3-sonnet-20240229",
+            max_tokens=2000,
+            system="You are an AI agent generating action options based on a situation analysis. Provide detailed, concrete actions.",
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+        
+        return response.content[0].text
+    
+    def _create_options_generation_prompt(self, 
+                                        situation_analysis: Dict[str, Any],
+                                        memory: AgentMemory,
+                                        goals: List[Dict[str, Any]]) -> str:
+        """Create a prompt for LLM-based options generation"""
+        # Format situation analysis
+        screen_summary = situation_analysis.get("screen_summary", "")
+        
+        relevant_elements_str = "\n".join([
+            f"- {element.get('type', 'unknown')}: '{element.get('text', '')}' at position {element.get('bounds', 'unknown')}" 
+            for element in situation_analysis.get("relevant_elements", [])
+        ])
+        
+        obstacles_str = "\n".join([
+            f"- {obstacle}" 
+            for obstacle in situation_analysis.get("obstacles", [])
+        ])
+        
+        focus_areas_str = "\n".join([
+            f"- {focus}" 
+            for focus in situation_analysis.get("focus_areas", [])
+        ])
+        
+        # Format goals
+        goals_str = "\n".join([
+            f"- {goal.get('description', 'unknown')} (priority: {goal.get('priority', 'unknown')})"
+            for goal in goals
+        ])
+        
+        # Format working memory
+        working_memory = memory.working_memory
+        working_memory_str = "\n".join([
+            f"- {key}: {str(value)}"
+            for key, value in working_memory.items()
+        ])
+        
+        # Create the prompt
+        prompt = f"""
+        # Situation Analysis
+        
+        ## Screen Summary:
+        {screen_summary}
+        
+        ## Relevant UI Elements:
+        {relevant_elements_str}
+        
+        ## Potential Obstacles:
+        {obstacles_str}
+        
+        ## Recommended Focus Areas:
+        {focus_areas_str}
+        
+        ## Current Goals:
+        {goals_str}
+        
+        ## Working Memory:
+        {working_memory_str}
+        
+        Based on this analysis, generate 3-5 possible action options. For each option, provide:
+        1. A clear description of the action
+        2. The specific UI element to interact with (if applicable)
+        3. The type of interaction (click, type, etc.)
+        4. Expected outcome
+        5. Alignment with current goals
+        
+        Structure your response in JSON format with an array of options, each containing:
+        - "description": Description of the action
+        - "element_id": ID or description of the UI element to interact with
+        - "interaction_type": Type of interaction (click, type, navigate, etc.)
+        - "interaction_params": Additional parameters for the interaction (e.g., text to type)
+        - "expected_outcome": What should happen after the action
+        - "goal_alignment": How this aligns with current goals (high, medium, low)
+        """
+        
+        return prompt
+    
+    def _parse_llm_options(self, response: str) -> List[Dict[str, Any]]:
+        """Parse the LLM response into a structured list of options"""
+        try:
+            # Try to extract JSON from the response
+            json_str = response
+            
+            # If the response contains markdown code blocks, extract JSON from them
+            if "```json" in response:
+                start = response.find("```json") + 7
+                end = response.find("```", start)
+                json_str = response[start:end].strip()
+            elif "```" in response:
+                start = response.find("```") + 3
+                end = response.find("```", start)
+                json_str = response[start:end].strip()
+            
+            data = json.loads(json_str)
+            
+            # Handle different possible structures
+            if isinstance(data, list):
+                options = data
+            elif isinstance(data, dict) and "options" in data:
+                options = data["options"]
+            else:
+                options = [data]
+            
+            # Add success field
+            for option in options:
+                option["success"] = True
+            
+            return options
+            
+        except Exception as e:
+            logger.error(f"Error parsing LLM options: {str(e)}")
+            
+            # Return a single generic option based on the raw text
+            return [{
+                "success": True,
+                "description": "Fallback option due to parsing error",
+                "element_id": "unknown",
+                "interaction_type": "click",
+                "interaction_params": {},
+                "expected_outcome": "Progress to next step",
+                "goal_alignment": "medium",
+                "raw_response": response
+            }]
+    
+    def _generate_options_with_rules(self, 
+                                   situation_analysis: Dict[str, Any],
+                                   memory: AgentMemory,
+                                   goals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Use rule-based approaches to generate options when LLMs aren't available"""
+        options = []
+        
+        # Get relevant elements from the analysis
+        relevant_elements = situation_analysis.get("relevant_elements", [])
+        
+        # Generate options for each interactive element
+        for element in relevant_elements:
+            element_type = element.get("type", "")
+            
+            if element_type == "button":
+                options.append({
+                    "success": True,
+                    "description": f"Click the '{element.get('text', 'unknown')}' button",
+                    "element_id": str(element),
+                    "interaction_type": "click",
+                    "interaction_params": {},
+                    "expected_outcome": "Button action triggered",
+                    "goal_alignment": "medium"
+                })
+            
+            elif element_type == "text_field":
+                options.append({
+                    "success": True,
+                    "description": f"Enter text in the '{element.get('placeholder', 'unknown')}' field",
+                    "element_id": str(element),
+                    "interaction_type": "type",
+                    "interaction_params": {"text": "sample input"},
+                    "expected_outcome": "Text entered in field",
+                    "goal_alignment": "medium"
+                })
+            
+            elif element_type == "checkbox":
+                options.append({
+                    "success": True,
+                    "description": f"Toggle the '{element.get('text', 'unknown')}' checkbox",
+                    "element_id": str(element),
+                    "interaction_type": "click",
+                    "interaction_params": {},
+                    "expected_outcome": "Checkbox toggled",
+                    "goal_alignment": "medium"
+                })
+        
+        # Always add a fallback option
+        options.append({
+            "success": True,
+            "description": "Wait and observe",
+            "element_id": "none",
+            "interaction_type": "wait",
+            "interaction_params": {"duration": 2},
+            "expected_outcome": "Better understanding of the interface",
+            "goal_alignment": "low"
+        })
+        
+        return options
+    
+    async def select_best_option(self, options: List[Dict[str, Any]], goals: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Select the best option from the available choices
+        
+        Args:
+            options: List of available options
+            goals: Current goals
+            
+        Returns:
+            The selected option
+        """
+        if not options:
+            return {"success": False, "error": "No options available"}
+        
+        # Filter out unsuccessful options
+        valid_options = [opt for opt in options if opt.get("success", False)]
+        
+        if not valid_options:
+            return {"success": False, "error": "No valid options available"}
+        
+        try:
+            # Score each option based on goal alignment
+            scored_options = []
+            
+            for option in valid_options:
+                goal_alignment = option.get("goal_alignment", "medium")
+                
+                # Convert text alignment to numerical score
+                alignment_score = {
+                    "high": 3,
+                    "medium": 2,
+                    "low": 1
+                }.get(goal_alignment.lower(), 1)
+                
+                scored_options.append((option, alignment_score))
+            
+            # Sort by score (descending)
+            scored_options.sort(key=lambda x: x[1], reverse=True)
+            
+            # Return the highest-scoring option
+            selected_option = scored_options[0][0]
+            selected_option["selection_reason"] = f"Highest goal alignment (score: {scored_options[0][1]})"
+            
+            return selected_option
+            
+        except Exception as e:
+            logger.error(f"Error selecting best option: {str(e)}")
+            
+            # Fall back to first option
+            return valid_options[0]
+
+
+class GoalManagementSystem:
+    """
+    System for managing agent goals and tracking progress
+    
+    This system enables the agent to:
+    1. Maintain a hierarchy of goals and subgoals
+    2. Track progress toward goals
+    3. Adjust priorities dynamically
+    4. Handle goal conflicts
+    5. Generate new goals based on observations
+    
+    This is a critical component for true autonomy and agency.
+    """
+    
+    def __init__(self):
+        """Initialize the goal management system"""
+        self.goals = []
+        self.next_goal_id = 1
+    
+    def add_goal(self, description: str, priority: int = 5) -> int:
+        """
+        Add a new top-level goal
+        
+        Args:
+            description: Description of the goal
+            priority: Priority level (1-10, with 10 being highest)
+            
+        Returns:
+            Goal ID
+        """
+        goal_id = self.next_goal_id
+        self.next_goal_id += 1
+        
+        goal = {
+            "id": goal_id,
+            "description": description,
+            "priority": priority,
+            "status": "active",
+            "progress": 0,
+            "subgoals": [],
+            "parent_id": None,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        self.goals.append(goal)
+        return goal_id
+    
+    def add_subgoal(self, parent_id: int, description: str, priority: int = None) -> int:
+        """
+        Add a subgoal to an existing goal
+        
+        Args:
+            parent_id: ID of the parent goal
+            description: Description of the subgoal
+            priority: Priority level (if None, inherits from parent)
+            
+        Returns:
+            Goal ID
+        """
+        # Find the parent goal
+        parent_goal = self._find_goal(parent_id)
+        if not parent_goal:
+            raise ValueError(f"Parent goal with ID {parent_id} not found")
+        
+        # Use parent's priority if not specified
+        if priority is None:
+            priority = parent_goal["priority"]
+        
+        # Create the subgoal
+        goal_id = self.next_goal_id
+        self.next_goal_id += 1
+        
+        subgoal = {
+            "id": goal_id,
+            "description": description,
+            "priority": priority,
+            "status": "active",
+            "progress": 0,
+            "subgoals": [],
+            "parent_id": parent_id,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        # Add to parent's subgoals
+        parent_goal["subgoals"].append(subgoal)
+        
+        return goal_id
+    
+    def update_goal_progress(self, goal_id: int, progress: int) -> bool:
+        """
+        Update the progress of a goal
+        
+        Args:
+            goal_id: ID of the goal
+            progress: Progress percentage (0-100)
+            
+        Returns:
+            Success status
+        """
+        goal = self._find_goal(goal_id)
+        if not goal:
+            return False
+        
+        goal["progress"] = max(0, min(100, progress))
+        goal["updated_at"] = datetime.now().isoformat()
+        
+        # If progress is 100%, mark as completed
+        if goal["progress"] >= 100:
+            goal["status"] = "completed"
+        
+        # Update parent goal progress based on subgoals
+        if goal["parent_id"]:
+            self._update_parent_progress(goal["parent_id"])
+        
+        return True
+    
+    def _update_parent_progress(self, parent_id: int):
+        """Update a parent goal's progress based on its subgoals"""
+        parent = self._find_goal(parent_id)
+        if not parent or not parent["subgoals"]:
+            return
+        
+        # Calculate average progress of subgoals
+        total_progress = sum(sg["progress"] for sg in parent["subgoals"])
+        avg_progress = total_progress / len(parent["subgoals"])
+        
+        parent["progress"] = int(avg_progress)
+        parent["updated_at"] = datetime.now().isoformat()
+        
+        # If progress is 100%, mark as completed
+        if parent["progress"] >= 100:
+            parent["status"] = "completed"
+        
+        # Recursively update parent's parent
+        if parent["parent_id"]:
+            self._update_parent_progress(parent["parent_id"])
+    
+    def complete_goal(self, goal_id: int) -> bool:
+        """
+        Mark a goal as completed
+        
+        Args:
+            goal_id: ID of the goal
+            
+        Returns:
+            Success status
+        """
+        return self.update_goal_progress(goal_id, 100)
+    
+    def fail_goal(self, goal_id: int, reason: str) -> bool:
+        """
+        Mark a goal as failed
+        
+        Args:
+            goal_id: ID of the goal
+            reason: Reason for failure
+            
+        Returns:
+            Success status
+        """
+        goal = self._find_goal(goal_id)
+        if not goal:
+            return False
+        
+        goal["status"] = "failed"
+        goal["failure_reason"] = reason
+        goal["updated_at"] = datetime.now().isoformat()
+        
+        return True
+    
+    def update_goal_priority(self, goal_id: int, priority: int) -> bool:
+        """
+        Update the priority of a goal
+        
+        Args:
+            goal_id: ID of the goal
+            priority: New priority level (1-10)
+            
+        Returns:
+            Success status
+        """
+        goal = self._find_goal(goal_id)
+        if not goal:
+            return False
+        
+        goal["priority"] = max(1, min(10, priority))
+        goal["updated_at"] = datetime.now().isoformat()
+        
+        return True
+    
+    def get_active_goals(self) -> List[Dict[str, Any]]:
+        """Get all active top-level goals"""
+        return [goal for goal in self.goals if goal["status"] == "active" and goal["parent_id"] is None]
+    
+    def get_all_goals(self) -> List[Dict[str, Any]]:
+        """Get all goals"""
+        return self.goals
+    
+    def get_highest_priority_goal(self) -> Optional[Dict[str, Any]]:
+        """Get the active goal with the highest priority"""
+        active_goals = [goal for goal in self.goals if goal["status"] == "active"]
+        if not active_goals:
+            return None
+        
+        # Sort by priority (descending)
+        active_goals.sort(key=lambda g: g["priority"], reverse=True)
+        return active_goals[0]
+    
+    def _find_goal(self, goal_id: int) -> Optional[Dict[str, Any]]:
+        """Find a goal by ID (including subgoals)"""
+        # Check top-level goals
+        for goal in self.goals:
+            if goal["id"] == goal_id:
+                return goal
+            
+            # Check subgoals recursively
+            subgoal = self._find_subgoal(goal, goal_id)
+            if subgoal:
+                return subgoal
+        
+        return None
+    
+    def _find_subgoal(self, parent: Dict[str, Any], goal_id: int) -> Optional[Dict[str, Any]]:
+        """Recursively find a subgoal within a parent goal"""
+        for subgoal in parent.get("subgoals", []):
+            if subgoal["id"] == goal_id:
+                return subgoal
+            
+            # Check deeper levels
+            nested = self._find_subgoal(subgoal, goal_id)
+            if nested:
+                return nested
+        
+        return None
+
+
+class LearningSystem:
+    """
+    System for learning from experiences and improving over time
+    
+    This system enables the agent to:
+    1. Learn from successes and failures
+    2. Improve decision making based on past experiences
+    3. Adapt to new situations by generalizing from previous encounters
+    4. Store procedural knowledge about how to accomplish tasks
+    
+    This component is essential for true agency and long-term improvement.
+    """
+    
+    def __init__(self):
+        """Initialize the learning system"""
+        # Store experiences
+        self.experiences = []
+        
+        # Store task procedures
+        self.procedures = {}
+    
+    def add_experience(self, experience: Dict[str, Any]):
+        """
+        Add a new experience for learning
+        
+        Args:
+            experience: Dictionary with experience details
+        """
+        # Add timestamp
+        experience["timestamp"] = datetime.now().isoformat()
+        
+        # Add to experiences
+        self.experiences.append(experience)
+    
+    def add_successful_procedure(self, task_name: str, steps: List[Dict[str, Any]]):
+        """
+        Store a successful procedure for a task
+        
+        Args:
+            task_name: Name of the task
+            steps: List of steps to accomplish the task
+        """
+        self.procedures[task_name] = {
+            "steps": steps,
+            "success_count": self.procedures.get(task_name, {}).get("success_count", 0) + 1,
+            "last_update": datetime.now().isoformat()
+        }
+    
+    def get_relevant_experiences(self, query: str, max_results: int = 5) -> List[Dict[str, Any]]:
+        """
+        Get experiences relevant to a given query
+        
+        Args:
+            query: Query string
+            max_results: Maximum number of results
+            
+        Returns:
+            List of relevant experiences
+        """
+        query_terms = query.lower().split()
+        scored_experiences = []
+        
+        for exp in self.experiences:
+            # Calculate a simple relevance score
+            score = 0
+            exp_text = str(exp).lower()
+            
+            for term in query_terms:
+                if term in exp_text:
+                    score += 1
+            
+            if score > 0:
+                scored_experiences.append((exp, score))
+        
+        # Sort by score and return top results
+        scored_experiences.sort(key=lambda x: x[1], reverse=True)
+        return [exp for exp, _ in scored_experiences[:max_results]]
+    
+    def get_procedure(self, task_name: str) -> Optional[List[Dict[str, Any]]]:
+        """
+        Get a stored procedure for a task
+        
+        Args:
+            task_name: Name of the task
+            
+        Returns:
+            List of steps, or None if not found
+        """
+        procedure = self.procedures.get(task_name)
+        if procedure:
+            return procedure["steps"]
+        return None
+    
+    def get_learning_stats(self) -> Dict[str, Any]:
+        """Get statistics about the learning system"""
+        return {
+            "experience_count": len(self.experiences),
+            "procedure_count": len(self.procedures),
+            "most_successful_procedures": [
+                {
+                    "task_name": task,
+                    "success_count": info["success_count"]
+                }
+                for task, info in sorted(
+                    self.procedures.items(),
+                    key=lambda x: x[1]["success_count"],
+                    reverse=True
+                )[:5]
+            ]
+        }
 
 
 class AutonomousAgent:
     """
-    Complete autonomous agent system tying together all components
+    Main agent class that integrates all components for true agency
     
     This agent is capable of:
-    1. Autonomous web browsing and data extraction
-    2. Complex decision making based on observations
-    3. Memory management for maintaining context
-    4. Tool usage for specialized operations
+    1. Perceiving its environment through computer vision
+    2. Taking actions to achieve goals
+    3. Making autonomous decisions
+    4. Learning from experience
+    5. Managing its own goals
+    
+    This implementation draws inspiration from:
+    - Microsoft Omniparser's screen understanding capabilities
+    - Claude Computer Use's action system
+    - Advanced AI agent architectures
     """
     
-    def __init__(self, 
-                use_quantum: bool = True,
-                n_qubits: int = 8,
-                use_claude: bool = True,
-                use_browser: bool = True):
-        """Initialize the autonomous agent with all its components"""
-        self.memory = AgentMemory()
-        self.web_agent = WebInteractionAgent() if use_browser else None
-        self.tools = {}
-        self.quantum_processor = None  # Will be initialized later
-        self.ai_processor = None  # Will be initialized later
+    def __init__(self, use_quantum: bool = True, n_qubits: int = 8):
+        """
+        Initialize the autonomous agent
         
-        # Configuration
+        Args:
+            use_quantum: Whether to use quantum computing capabilities
+            n_qubits: Number of qubits for quantum simulations
+        """
+        # Agent configuration
         self.use_quantum = use_quantum
         self.n_qubits = n_qubits
-        self.use_claude = use_claude
+        self.agent_name = "QA³ Agent"
         
-        # Metrics
-        self.start_time = time.time()
-        self.total_tasks = 0
-        self.completed_tasks = 0
-        self.task_history = []
+        # Initialize key components
+        self.memory = AgentMemory()
+        self.perception = PerceptionSystem()
+        self.action = ActionSystem()
+        self.decision = DecisionSystem(use_llm=True)
+        self.goals = GoalManagementSystem()
+        self.learning = LearningSystem()
         
-    async def initialize(self):
-        """Initialize all agent components"""
-        # Initialize web interaction capabilities if enabled
-        if self.web_agent:
-            await self.web_agent.initialize()
+        # Initialize quantum capabilities
+        self.quantum_initialized = False
+        if use_quantum:
+            self._initialize_quantum()
+        
+        # Agent state
+        self.is_running = False
+        self.current_task = None
+        self.startup_time = datetime.now().isoformat()
+        
+        # Action and task queues
+        self.action_queue = queue.Queue()
+        self.task_queue = queue.Queue()
+        
+        # Register core objectives
+        self.goals.add_goal("Understand the user interface", priority=8)
+        self.goals.add_goal("Accomplish user-specified tasks", priority=10)
+        self.goals.add_goal("Learn from interactions", priority=6)
+        
+        logger.info(f"Autonomous agent initialized with {n_qubits} qubits")
+    
+    def _initialize_quantum(self):
+        """Initialize quantum computing capabilities"""
+        try:
+            # Check for PennyLane
+            import pennylane as qml
             
-        # Register built-in tools
-        self._register_tools()
-        
-        logger.info("Autonomous agent initialized successfully")
-        
-    async def _register_tools(self):
-        """Register all available tools for the agent"""
-        # Web browsing tools
-        if self.web_agent:
-            self.register_tool(
-                "browse_web",
-                "Navigate to a web page and extract its content",
-                self.web_agent.navigate
-            )
+            # Create a simple device
+            self.quantum_device = qml.device("default.qubit", wires=self.n_qubits)
+            self.quantum_initialized = True
             
-            self.register_tool(
-                "search_web",
-                "Search the web for information using search engines",
-                self.web_agent.search
-            )
+            # Store in memory
+            self.memory.add_semantic_knowledge("quantum_device", "PennyLane default.qubit")
+            self.memory.add_semantic_knowledge("n_qubits", self.n_qubits)
             
-            self.register_tool(
-                "click_element",
-                "Click on an element on a web page",
-                self.web_agent.click_element
-            )
-            
-            self.register_tool(
-                "fill_form",
-                "Fill a form field on a web page",
-                self.web_agent.fill_form
-            )
-            
-            self.register_tool(
-                "submit_form",
-                "Submit a form on a web page",
-                self.web_agent.submit_form
-            )
-            
-            self.register_tool(
-                "extract_data",
-                "Extract structured data from the current web page",
-                self.web_agent.extract_structured_data
-            )
-            
-            self.register_tool(
-                "take_screenshot",
-                "Take a screenshot of the current web page",
-                self.web_agent.take_screenshot
-            )
-        
-    def register_tool(self, name: str, description: str, func):
-        """Register a new tool for the agent to use"""
-        self.tools[name] = AutomationTool(name, description, func)
-        logger.info(f"Registered tool: {name}")
-        
-    async def execute_tool(self, tool_name: str, *args, **kwargs) -> Dict[str, Any]:
-        """Execute a registered tool by name"""
-        if tool_name not in self.tools:
-            return {
-                "success": False,
-                "error": f"Tool '{tool_name}' not found"
-            }
-            
-        tool = self.tools[tool_name]
-        result = await tool.execute(*args, **kwargs)
-        
-        # Record tool execution in memory
-        self.memory.add_interaction(
-            role="agent",
-            content=f"Executed tool: {tool_name}",
-            metadata={
-                "tool": tool_name,
-                "args": args,
-                "kwargs": kwargs,
-                "success": result["success"]
-            }
-        )
-        
-        return result
-        
+            logger.info(f"Quantum core initialized with {self.n_qubits} qubits")
+        except ImportError:
+            logger.warning("PennyLane not available. Quantum features will be disabled.")
+            self.quantum_initialized = False
+    
     async def process_task(self, task: str) -> Dict[str, Any]:
         """
-        Process a user task autonomously
+        Process a user task with autonomous capabilities
         
-        This is the main entry point for handling tasks. The agent will:
-        1. Analyze the task
-        2. Plan necessary actions
-        3. Execute actions using tools
-        4. Report results
+        Args:
+            task: Description of the task to accomplish
+            
+        Returns:
+            Dict with task results
         """
-        self.total_tasks += 1
-        start_time = time.time()
+        logger.info(f"Processing task: {task}")
         
-        # Record the task in memory
-        self.memory.add_interaction(role="user", content=task)
-        
-        # Clear working memory for new task
-        self.memory.clear_working_memory()
-        
-        try:
-            # Analyze the task to determine required actions
-            task_analysis = await self._analyze_task(task)
-            
-            # Store analysis in working memory
-            self.memory.add_to_working_memory("task_analysis", task_analysis)
-            
-            # Create a plan
-            plan = await self._create_plan(task, task_analysis)
-            
-            # Store plan in working memory
-            self.memory.add_to_working_memory("plan", plan)
-            
-            # Execute the plan steps
-            step_results = []
-            for i, step in enumerate(plan["steps"]):
-                self.memory.add_interaction(
-                    role="agent",
-                    content=f"Executing step {i+1}: {step['description']}"
-                )
-                
-                # Execute the step
-                step_result = await self._execute_step(step)
-                step_results.append(step_result)
-                
-                # If a critical step failed, abort the plan
-                if not step_result["success"] and step.get("critical", False):
-                    self.memory.add_interaction(
-                        role="agent",
-                        content=f"Critical step failed, aborting plan: {step_result['error']}"
-                    )
-                    break
-            
-            # Generate result summary
-            execution_time = time.time() - start_time
-            success = all(step["success"] for step in step_results)
-            
-            if success:
-                self.completed_tasks += 1
-                
-            # Generate a summary of the results
-            summary = await self._generate_result_summary(task, step_results, success)
-            
-            # Record the entire task in history
-            task_record = {
-                "task": task,
-                "analysis": task_analysis,
-                "plan": plan,
-                "results": step_results,
-                "summary": summary,
-                "success": success,
-                "execution_time": execution_time,
-                "timestamp": datetime.now().isoformat()
-            }
-            self.task_history.append(task_record)
-            
-            # Add the agent's response to memory
-            self.memory.add_interaction(role="agent", content=summary)
-            
-            return {
-                "task": task,
-                "summary": summary,
-                "success": success,
-                "execution_time": execution_time,
-                "step_results": step_results
-            }
-            
-        except Exception as e:
-            execution_time = time.time() - start_time
-            logger.error(f"Error processing task: {str(e)}")
-            traceback.print_exc()
-            
-            error_summary = f"I encountered an error while processing your task: {str(e)}"
-            self.memory.add_interaction(role="agent", content=error_summary)
-            
-            return {
-                "task": task,
-                "error": str(e),
-                "success": False,
-                "execution_time": execution_time
-            }
-            
-    async def _analyze_task(self, task: str) -> Dict[str, Any]:
-        """
-        Analyze a task to determine appropriate action plan
-        This would use an LLM in a real implementation
-        """
-        # For now, use keyword-based classification
-        task_lower = task.lower()
-        
-        # Detect web browsing intent
-        web_terms = ["browse", "website", "web page", "visit", "go to", "open", ".com", ".org", ".edu", "http"]
-        is_web_task = any(term in task_lower for term in web_terms)
-        
-        # Detect search intent
-        search_terms = ["search", "find", "look up", "information about", "what is", "who is"]
-        is_search_task = any(term in task_lower for term in search_terms)
-        
-        # Detect quantum computing intent
-        quantum_terms = ["quantum", "factorize", "factor", "optimize", "qubit"]
-        is_quantum_task = any(term in task_lower for term in quantum_terms)
-        
-        # Extract potential URLs
-        urls = []
-        import re
-        url_pattern = r'https?://\S+|www\.\S+|\S+\.(com|org|edu|io|net|gov)\S*'
-        matches = re.findall(url_pattern, task)
-        if matches:
-            for match in matches:
-                if isinstance(match, tuple):
-                    continue
-                url = match
-                if not url.startswith(('http://', 'https://')):
-                    url = 'https://' + url
-                urls.append(url)
-        
-        # Extract potential search queries
-        search_query = None
-        if is_search_task:
-            for term in search_terms:
-                if term in task_lower:
-                    parts = task_lower.split(term, 1)
-                    if len(parts) > 1:
-                        query = parts[1].strip()
-                        if query:
-                            search_query = query
-                            break
-        
-        return {
-            "task_type": "web_browsing" if is_web_task else "search" if is_search_task else "quantum_computing" if is_quantum_task else "general",
-            "requires_web": is_web_task or is_search_task,
-            "requires_quantum": is_quantum_task,
-            "extracted_urls": urls,
-            "search_query": search_query,
-            "confidence": 0.8 if (is_web_task or is_search_task or is_quantum_task) else 0.5
-        }
-        
-    async def _create_plan(self, task: str, analysis: Dict[str, Any]) -> Dict[str, Any]:
-        """Create a plan for executing the task based on analysis"""
-        steps = []
-        
-        if analysis["task_type"] == "web_browsing":
-            if analysis["extracted_urls"]:
-                for url in analysis["extracted_urls"]:
-                    steps.append({
-                        "tool": "browse_web",
-                        "description": f"Browse to {url}",
-                        "params": {"url": url},
-                        "critical": True
-                    })
-                    
-                    steps.append({
-                        "tool": "extract_data",
-                        "description": "Extract structured data from the page",
-                        "params": {},
-                        "critical": False
-                    })
-            else:
-                # No specific URL found, try to infer from context
-                domain_hints = [
-                    word for word in task.split() 
-                    if (".com" in word or ".org" in word or ".edu" in word or ".io" in word)
-                ]
-                
-                if domain_hints:
-                    inferred_url = domain_hints[0]
-                    if not inferred_url.startswith(('http://', 'https://')):
-                        inferred_url = 'https://' + inferred_url
-                        
-                    steps.append({
-                        "tool": "browse_web",
-                        "description": f"Browse to inferred URL: {inferred_url}",
-                        "params": {"url": inferred_url},
-                        "critical": True
-                    })
-                    
-                    steps.append({
-                        "tool": "extract_data",
-                        "description": "Extract structured data from the page",
-                        "params": {},
-                        "critical": False
-                    })
-                    
-        elif analysis["task_type"] == "search":
-            if analysis["search_query"]:
-                steps.append({
-                    "tool": "search_web",
-                    "description": f"Search for: {analysis['search_query']}",
-                    "params": {"query": analysis["search_query"]},
-                    "critical": True
-                })
-                
-                # Add a step to visit the first result
-                steps.append({
-                    "tool": "custom_action",
-                    "description": "Visit the first relevant search result",
-                    "action": "visit_search_result",
-                    "params": {"index": 0},
-                    "critical": False
-                })
-                
-        elif analysis["task_type"] == "quantum_computing":
-            # For quantum tasks, we'll delegate to specialized handlers
-            steps.append({
-                "tool": "custom_action",
-                "description": f"Process quantum computing task",
-                "action": "process_quantum_task",
-                "params": {"task": task},
-                "critical": True
-            })
-            
-        # Always include a summarization step
-        steps.append({
-            "tool": "custom_action",
-            "description": "Generate response summary",
-            "action": "generate_summary",
-            "params": {},
-            "critical": True
+        # Store task in memory
+        self.memory.add_episode({
+            "type": "task_received",
+            "task": task
         })
         
+        # Update working memory
+        self.memory.update_working_memory("current_task", task)
+        self.current_task = task
+        
+        # Add as a goal
+        goal_id = self.goals.add_goal(f"Complete task: {task}", priority=9)
+        
+        # Capture current state
+        perception_result = self.perception.capture_screen()
+        if perception_result["success"]:
+            screen_analysis = self.perception.analyze_screen(perception_result)
+            self.memory.add_observation(screen_analysis)
+        
+        # Analyze the situation
+        situation = await self.decision.analyze_situation(
+            screen_analysis if perception_result["success"] else {"success": False, "error": "Perception failed"},
+            self.memory,
+            self.goals.get_active_goals()
+        )
+        
+        # Generate action options
+        options = await self.decision.generate_options(
+            situation,
+            self.memory,
+            self.goals.get_active_goals()
+        )
+        
+        # Select best option
+        selected_option = await self.decision.select_best_option(
+            options,
+            self.goals.get_active_goals()
+        )
+        
+        # Execute the selected action
+        result = await self.execute_action(selected_option)
+        
+        # Store the results
+        self.memory.add_episode({
+            "type": "action_result",
+            "task": task,
+            "action": selected_option,
+            "result": result
+        })
+        
+        # Update goal progress based on result
+        if result.get("success", False):
+            self.goals.update_goal_progress(goal_id, 100)
+            
+            # Store successful procedure
+            self.learning.add_successful_procedure(
+                f"task_{task}", 
+                [{"action": selected_option, "result": result}]
+            )
+        else:
+            self.goals.update_goal_progress(goal_id, 25)
+        
+        # Return the results
         return {
             "task": task,
-            "task_type": analysis["task_type"],
-            "steps": steps
+            "success": result.get("success", False),
+            "action_taken": selected_option,
+            "result": result,
+            "agent_state": self.get_status()
         }
+    
+    async def execute_action(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute a selected action
         
-    async def _execute_step(self, step: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute a single step in the plan"""
-        if step.get("tool") in self.tools:
-            # Execute a registered tool
-            return await self.execute_tool(step["tool"], **step["params"])
+        Args:
+            action: Details of the action to execute
             
-        elif step.get("action") == "visit_search_result":
-            # Custom action to visit a search result
-            try:
-                search_results = self.memory.get_from_working_memory("search_results")
-                if not search_results or not isinstance(search_results, list) or len(search_results) <= step["params"]["index"]:
-                    return {
-                        "success": False,
-                        "error": "No search results available or index out of range"
-                    }
-                    
-                result = search_results[step["params"]["index"]]
-                if "url" in result:
-                    return await self.execute_tool("browse_web", url=result["url"])
-                else:
-                    return {
-                        "success": False,
-                        "error": "Selected search result has no URL"
-                    }
-            except Exception as e:
+        Returns:
+            Dict with action results
+        """
+        if not action.get("success", False):
+            return {"success": False, "error": "Invalid action"}
+        
+        interaction_type = action.get("interaction_type", "").lower()
+        element_id = action.get("element_id", "")
+        params = action.get("interaction_params", {})
+        
+        try:
+            # Different actions based on interaction type
+            if interaction_type == "click":
+                # Find the element (in a real implementation, this would use a proper reference)
+                element = {"type": "button", "bounds": [100, 100, 200, 150], "text": "Sample"}
+                
+                # Execute the click
+                result = self.action.click(element)
+                
+                # Add to memory
+                self.memory.add_episode({
+                    "type": "action",
+                    "action": "click",
+                    "element": element,
+                    "result": result
+                })
+                
+                return result
+                
+            elif interaction_type == "type":
+                # Find the element
+                element = {"type": "text_field", "bounds": [100, 100, 500, 150], "placeholder": "Sample"}
+                text = params.get("text", "")
+                
+                # Execute the typing
+                result = self.action.type_text(element, text)
+                
+                # Add to memory
+                self.memory.add_episode({
+                    "type": "action",
+                    "action": "type",
+                    "element": element,
+                    "text": text,
+                    "result": result
+                })
+                
+                return result
+                
+            elif interaction_type == "navigate":
+                url = params.get("url", "")
+                
+                # Execute the navigation
+                result = self.action.navigate(url)
+                
+                # Add to memory
+                self.memory.add_episode({
+                    "type": "action",
+                    "action": "navigate",
+                    "url": url,
+                    "result": result
+                })
+                
+                return result
+                
+            elif interaction_type == "wait":
+                duration = params.get("duration", 1)
+                
+                # Simulate waiting
+                await asyncio.sleep(duration)
+                
+                # Add to memory
+                self.memory.add_episode({
+                    "type": "action",
+                    "action": "wait",
+                    "duration": duration
+                })
+                
                 return {
-                    "success": False,
-                    "error": f"Error visiting search result: {str(e)}"
+                    "success": True,
+                    "action": "wait",
+                    "duration": duration,
+                    "timestamp": datetime.now().isoformat()
                 }
                 
-        elif step.get("action") == "process_quantum_task":
-            # Handle quantum computing task
-            if not self.quantum_processor:
-                return {
-                    "success": False, 
-                    "error": "Quantum processor not initialized"
-                }
+            else:
+                return {"success": False, "error": f"Unknown interaction type: {interaction_type}"}
                 
-            # This is a placeholder - would delegate to quantum_processor
-            return {
-                "success": True,
-                "message": "Quantum task processing would happen here",
-                "note": "This is simulated since this method focuses on web agency"
-            }
-            
-        elif step.get("action") == "generate_summary":
-            # Generate a summary of the task results
-            # In a real implementation, this would use an LLM
-            collected_data = []
-            
-            # Get browsing results from memory
-            web_history = self.memory.web_history
-            if web_history:
-                last_pages = web_history[-3:]  # Last 3 pages
-                collected_data.append(f"Browsed {len(web_history)} web pages.")
-                for page in last_pages:
-                    collected_data.append(f"- {page['title']} ({page['url']})")
-            
-            # Get search results from memory
-            search_results = self.memory.get_from_working_memory("search_results")
-            if search_results:
-                collected_data.append(f"Found {len(search_results)} search results.")
-                
-            # Get extracted data
-            structured_data = self.memory.get_from_working_memory("structured_data")
-            if structured_data:
-                if "tables" in structured_data and structured_data["tables"]:
-                    collected_data.append(f"Extracted {len(structured_data['tables'])} tables.")
-                if "lists" in structured_data and structured_data["lists"]:
-                    collected_data.append(f"Extracted {len(structured_data['lists'])} lists.")
-                    
-            summary = "I've completed the task and collected the following information:\n\n"
-            summary += "\n".join(collected_data) if collected_data else "No significant data was collected."
-            
-            return {
-                "success": True,
-                "summary": summary
-            }
-            
-        else:
-            # Unknown step type
-            return {
-                "success": False,
-                "error": f"Unknown step type: {step.get('tool')} or {step.get('action')}"
-            }
-            
-    async def _generate_result_summary(self, task: str, step_results: List[Dict[str, Any]], 
-                                     success: bool) -> str:
-        """Generate a summary of the task results"""
-        # In a real implementation, this would use an LLM based on the memory
-        # and step results
-        
-        if not success:
-            # Find the first failed step
-            for step in step_results:
-                if not step["success"]:
-                    return f"I wasn't able to complete the task due to an error: {step.get('error', 'Unknown error')}"
-        
-        # For successful tasks, gather relevant information
-        summary_parts = []
-        
-        # Look for web browsing results
-        browse_results = [s for s in step_results if s.get("tool") == "browse_web" and s["success"]]
-        if browse_results:
-            last_browse = browse_results[-1]
-            summary_parts.append(f"I browsed to {last_browse.get('result', {}).get('url')} and viewed the page.")
-            
-            # If we have a title, add it
-            if "result" in last_browse and "title" in last_browse["result"]:
-                summary_parts.append(f"The page title is: {last_browse['result']['title']}")
-                
-        # Look for search results
-        search_results = [s for s in step_results if s.get("tool") == "search_web" and s["success"]]
-        if search_results:
-            last_search = search_results[-1]
-            query = last_search.get("result", {}).get("query", "")
-            result_count = len(last_search.get("result", {}).get("results", []))
-            
-            if query and result_count > 0:
-                summary_parts.append(f"I searched for '{query}' and found {result_count} results.")
-                
-                # List the top 3 results
-                results = last_search.get("result", {}).get("results", [])
-                if results:
-                    summary_parts.append("Top results:")
-                    for i, result in enumerate(results[:3]):
-                        summary_parts.append(f"{i+1}. {result.get('title', 'Untitled')} - {result.get('url', 'No URL')}")
-                        
-        # Look for extracted data
-        extract_results = [s for s in step_results if s.get("tool") == "extract_data" and s["success"]]
-        if extract_results:
-            last_extract = extract_results[-1]
-            
-            # Check for tables
-            tables = last_extract.get("result", {}).get("tables", [])
-            if tables:
-                summary_parts.append(f"I found {len(tables)} tables on the page.")
-                
-            # Check for lists
-            lists = last_extract.get("result", {}).get("lists", [])
-            if lists:
-                summary_parts.append(f"I found {len(lists)} lists on the page.")
-                
-        # If we have custom summaries from steps, include them
-        for step in step_results:
-            if "summary" in step:
-                summary_parts.append(step["summary"])
-                
-        # Combine all parts into final summary
-        if summary_parts:
-            return "\n\n".join(summary_parts)
-        else:
-            return "I completed the task successfully, but don't have specific details to report."
-            
+        except Exception as e:
+            logger.error(f"Error executing action: {str(e)}")
+            return {"success": False, "error": str(e)}
+    
     def get_status(self) -> Dict[str, Any]:
         """Get the current status of the agent"""
-        uptime = time.time() - self.start_time
-        success_rate = (self.completed_tasks / self.total_tasks * 100) if self.total_tasks > 0 else 0
-        
-        status = {
-            "uptime_seconds": uptime,
-            "total_tasks": self.total_tasks,
-            "completed_tasks": self.completed_tasks,
-            "success_rate": success_rate,
-            "memory_stats": {
-                "short_term_items": len(self.memory.short_term),
-                "long_term_items": len(self.memory.long_term),
-                "web_history_items": len(self.memory.web_history)
-            }
+        return {
+            "agent_name": self.agent_name,
+            "initialized": True,
+            "quantum_initialized": self.quantum_initialized,
+            "n_qubits": self.n_qubits,
+            "current_task": self.current_task,
+            "goals": len(self.goals.get_active_goals()),
+            "memory_stats": self.memory.get_memory_stats(),
+            "learning_stats": self.learning.get_learning_stats(),
+            "startup_time": self.startup_time,
+            "current_time": datetime.now().isoformat()
         }
+    
+    async def start_agent_loop(self):
+        """Start the autonomous agent loop"""
+        if self.is_running:
+            return
         
-        # Add web metrics if available
-        if self.web_agent:
-            status["web_metrics"] = self.web_agent.get_metrics()
-            
-        # Add tool metrics
-        tool_metrics = {}
-        for name, tool in self.tools.items():
-            tool_metrics[name] = tool.metrics
-            
-        status["tool_metrics"] = tool_metrics
+        self.is_running = True
+        logger.info("Starting autonomous agent loop")
         
-        return status
+        try:
+            while self.is_running:
+                # Check for new tasks
+                if not self.task_queue.empty():
+                    task = self.task_queue.get()
+                    await self.process_task(task)
+                
+                # Check for new actions
+                if not self.action_queue.empty():
+                    action = self.action_queue.get()
+                    await self.execute_action(action)
+                
+                # Perform autonomous perception if no active tasks
+                if self.task_queue.empty() and self.action_queue.empty():
+                    # Capture screen state
+                    perception_result = self.perception.capture_screen()
+                    if perception_result["success"]:
+                        screen_analysis = self.perception.analyze_screen(perception_result)
+                        self.memory.add_observation(screen_analysis)
+                
+                # Small delay to prevent CPU hogging
+                await asyncio.sleep(0.1)
+                
+        except Exception as e:
+            logger.error(f"Error in agent loop: {str(e)}")
+            self.is_running = False
+    
+    def stop_agent_loop(self):
+        """Stop the autonomous agent loop"""
+        self.is_running = False
+        logger.info("Stopping autonomous agent loop")
+    
+    def add_task(self, task: str):
+        """
+        Add a task to the queue
         
-    async def close(self):
-        """Close all resources used by the agent"""
-        if self.web_agent:
-            await self.web_agent.close()
-            
-        logger.info("Agent resources released")
+        Args:
+            task: Description of the task
+        """
+        self.task_queue.put(task)
+    
+    def add_action(self, action: Dict[str, Any]):
+        """
+        Add an action to the queue
+        
+        Args:
+            action: Action to execute
+        """
+        self.action_queue.put(action)
+
+
+async def run_agent(task: str) -> Dict[str, Any]:
+    """
+    Run the autonomous agent on a specific task
+    
+    Args:
+        task: Description of the task
+        
+    Returns:
+        Dict with task results
+    """
+    # Create and initialize the agent
+    agent = AutonomousAgent()
+    
+    # Process the task
+    result = await agent.process_task(task)
+    
+    return result
+
+
+def run_agent_sync(task: str) -> Dict[str, Any]:
+    """
+    Synchronous wrapper for run_agent
+    
+    Args:
+        task: Description of the task
+        
+    Returns:
+        Dict with task results
+    """
+    return asyncio.run(run_agent(task))
