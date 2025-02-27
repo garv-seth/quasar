@@ -146,15 +146,15 @@ if 'quantum_core' not in st.session_state:
 
 # Initialize AI engine if not already in session state
 if 'ai_engine' not in st.session_state:
-    claude_available = os.environ.get("ANTHROPIC_API_KEY") is not None
+    # Default to OpenAI since we've had issues with Anthropic
     openai_available = os.environ.get("OPENAI_API_KEY") is not None
     
     st.session_state.ai_engine = AIEngine(
-        use_claude=claude_available,
+        use_claude=False,  # Not using Claude due to API key issues
         use_openai=openai_available
     )
-    st.session_state.show_ai_form = not (claude_available or openai_available)
-    st.session_state.ai_configured = claude_available or openai_available
+    st.session_state.show_ai_form = not openai_available
+    st.session_state.ai_configured = openai_available
 
 # Main header
 st.markdown('<div class="main-header">QUASAR: Quantum-Accelerated AI Agent</div>', unsafe_allow_html=True)
@@ -213,7 +213,7 @@ with st.sidebar:
     Quantum-Accelerated Search and AI Reasoning
     
     Using real quantum hardware through Azure Quantum
-    and advanced AI with Claude 3.7 Sonnet
+    and advanced AI with GPT-4o
     
     © 2025 Quantum Labs
     """)
@@ -327,7 +327,7 @@ if st.session_state.current_tab == "home":
     based on their characteristics.
     
     This implementation leverages Azure Quantum's IonQ integration for real quantum hardware access
-    and uses Claude 3.7 Sonnet for advanced AI capabilities.
+    and uses GPT-4o for advanced AI capabilities.
     """)
     
     # Feature highlights
@@ -368,7 +368,7 @@ if st.session_state.current_tab == "home":
     st.markdown("""
     QUASAR combines the power of quantum computing with classical processing and advanced AI:
     
-    1. **Task Analysis**: Uses Claude 3.7 to analyze computational tasks to determine if quantum acceleration would be beneficial
+    1. **Task Analysis**: Uses GPT-4o to analyze computational tasks to determine if quantum acceleration would be beneficial
     2. **Quantum Routing**: Routes appropriate subtasks to Azure Quantum's IonQ hardware or simulators
     3. **Hybrid Execution**: Executes tasks using the optimal mix of quantum and classical resources
     4. **AI-Enhanced Results**: Uses advanced AI to interpret and explain results in natural language

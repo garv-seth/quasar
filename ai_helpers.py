@@ -34,9 +34,9 @@ class AIEngine:
     """AI Engine for the QUASAR framework using Claude or alternatives"""
     
     def __init__(self, 
-                 use_claude: bool = True, 
+                 use_claude: bool = False,  # Default to False since we're having issues
                  use_openai: bool = True,
-                 claude_model: str = "claude-3-sonnet-20240229",
+                 claude_model: str = "claude-3-opus-20240229",  # Updated to latest model
                  openai_model: str = "gpt-4o"):
         """
         Initialize the AI Engine.
@@ -47,8 +47,12 @@ class AIEngine:
             claude_model: Claude model to use
             openai_model: OpenAI model to use
         """
-        self.use_claude = use_claude and ANTHROPIC_AVAILABLE and os.environ.get("ANTHROPIC_API_KEY")
-        self.use_openai = use_openai and OPENAI_AVAILABLE and os.environ.get("OPENAI_API_KEY")
+        # Check if API keys are available and valid
+        anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
+        openai_key = os.environ.get("OPENAI_API_KEY")
+        
+        self.use_claude = use_claude and ANTHROPIC_AVAILABLE and anthropic_key and anthropic_key != "sk-..."
+        self.use_openai = use_openai and OPENAI_AVAILABLE and openai_key and openai_key != "sk-..."
         
         self.claude_model = claude_model
         self.openai_model = openai_model
@@ -57,7 +61,7 @@ class AIEngine:
         
         if self.use_claude:
             try:
-                self.clients["claude"] = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+                self.clients["claude"] = Anthropic(api_key=anthropic_key)
                 logger.info(f"Initialized Claude client with model {self.claude_model}")
             except Exception as e:
                 logger.error(f"Error initializing Claude client: {e}")
@@ -65,7 +69,7 @@ class AIEngine:
         
         if self.use_openai:
             try:
-                self.clients["openai"] = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+                self.clients["openai"] = OpenAI(api_key=openai_key)
                 logger.info(f"Initialized OpenAI client with model {self.openai_model}")
             except Exception as e:
                 logger.error(f"Error initializing OpenAI client: {e}")
