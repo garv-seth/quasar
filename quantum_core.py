@@ -49,10 +49,34 @@ except ImportError:
     logger.warning("NumPy not available. Using simplified math functions.")
 
 # Define quantum simulation flags
-PENNYLANE_AVAILABLE = False
-AZURE_QUANTUM_AVAILABLE = False
+try:
+    import pennylane as qml
+    PENNYLANE_AVAILABLE = True
+    logger.info("PennyLane quantum computing library available.")
+except ImportError:
+    PENNYLANE_AVAILABLE = False
+    logger.warning("PennyLane quantum computing library not available. Some quantum features will be simulated.")
 
-logger.warning("Using simulated quantum results instead of real quantum libraries.")
+# Check for Azure Quantum
+try:
+    from azure.quantum import Workspace
+    from azure.quantum.target import ionq
+    import os
+    
+    # Check if the necessary environment variables are set
+    if (os.environ.get("AZURE_QUANTUM_SUBSCRIPTION_ID") and 
+        os.environ.get("AZURE_QUANTUM_RESOURCE_GROUP") and
+        os.environ.get("AZURE_QUANTUM_WORKSPACE_NAME") and
+        os.environ.get("AZURE_QUANTUM_LOCATION")):
+        
+        AZURE_QUANTUM_AVAILABLE = True
+        logger.info("Azure Quantum SDK available and configured.")
+    else:
+        AZURE_QUANTUM_AVAILABLE = False
+        logger.warning("Azure Quantum environment variables not set. Azure Quantum features will be disabled.")
+except ImportError:
+    AZURE_QUANTUM_AVAILABLE = False
+    logger.warning("Azure Quantum SDK not available. Azure Quantum features will be disabled.")
 
 
 class QuantumCore:
@@ -94,11 +118,24 @@ class QuantumCore:
             try:
                 from azure.quantum.target.ionq import Simulator
                 
-                # Create workspace object
-                self.workspace = Workspace()
+                # Create workspace object with proper credentials
+                self.workspace = Workspace(
+                    subscription_id=os.environ.get("AZURE_QUANTUM_SUBSCRIPTION_ID"),
+                    resource_group=os.environ.get("AZURE_QUANTUM_RESOURCE_GROUP"),
+                    name=os.environ.get("AZURE_QUANTUM_WORKSPACE_NAME"),
+                    location=os.environ.get("AZURE_QUANTUM_LOCATION")
+                )
                 
                 # Connect to IonQ simulator through Azure Quantum
                 self.devices["azure_ionq_simulator"] = Simulator(self.workspace)
+                
+                # Also try to connect to IonQ Aria-1 hardware
+                try:
+                    from azure.quantum.target.ionq import Aria1
+                    self.devices["azure_ionq_aria1"] = Aria1(self.workspace)
+                    logger.info("Connected to IonQ Aria-1 quantum hardware through Azure Quantum")
+                except Exception as e:
+                    logger.warning(f"Could not connect to IonQ Aria-1 hardware: {e}")
                 logger.info("Connected to IonQ simulator through Azure Quantum")
             except Exception as e:
                 logger.error(f"Error connecting to Azure Quantum: {e}")

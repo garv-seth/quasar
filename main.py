@@ -879,7 +879,29 @@ elif st.session_state.current_tab == "about":
 # Run the app
 def main():
     """Main function"""
-    pass
+    # Check if we have Azure Quantum credentials
+    azure_available = (
+        os.environ.get("AZURE_QUANTUM_SUBSCRIPTION_ID") is not None and
+        os.environ.get("AZURE_QUANTUM_RESOURCE_GROUP") is not None and
+        os.environ.get("AZURE_QUANTUM_WORKSPACE_NAME") is not None and
+        os.environ.get("AZURE_QUANTUM_LOCATION") is not None
+    )
+    
+    # Initialize session state with proper Azure Quantum integration if available
+    if 'quantum_core' not in st.session_state:
+        st.session_state.quantum_core = QuantumCore(
+            use_quantum=True,
+            n_qubits=8,
+            use_azure=azure_available
+        )
+        st.session_state.task_history = []
+        st.session_state.current_tab = "home"
+        st.session_state.show_quantum_details = False
+        
+        if azure_available:
+            logger.info("Azure Quantum integration enabled")
+        else:
+            logger.warning("Azure Quantum credentials not found, using local simulation only")
 
 if __name__ == "__main__":
     main()
