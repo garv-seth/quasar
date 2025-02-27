@@ -1369,14 +1369,13 @@ def main():
     # Initialize the session state
     initialize_session_state()
     
-    # Start the static file server for PWA assets
+    # The static file server is now handled by the pwa_integration module
+    # We don't need to start it here directly
     try:
         import static_file_server
-        # Start server on port 8000 for static files
-        static_file_server.start_server_thread(8000)
-        logger.info("Static file server started on port 8000")
+        logger.info("Static file server module loaded")
     except Exception as e:
-        logger.error(f"Failed to start static file server: {str(e)}")
+        logger.error(f"Failed to load static file server module: {str(e)}")
     
     # Set up the page
     st.set_page_config(
