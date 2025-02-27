@@ -37,6 +37,13 @@ from web_interaction import (
     create_quantum_web_integration
 )
 
+# Import our enhanced visible browser for PWA mode
+from quantum_web_integration import (
+    QuantumEnhancedVisibleBrowser,
+    create_quantum_enhanced_browser,
+    generate_pwa_manifest
+)
+
 # Setup PennyLane quantum computing
 try:
     import pennylane as qml
@@ -420,6 +427,23 @@ def initialize_session_state():
     
     if 'quantum_results' not in st.session_state:
         st.session_state.quantum_results = {}
+        
+    # Initialize PWA-specific session state variables
+    if 'visible_browser' not in st.session_state:
+        st.session_state.visible_browser = None
+        
+    if 'pwa_mode' not in st.session_state:
+        # Check if we're running in installed app mode (PWA)
+        st.session_state.pwa_mode = False  # Will update based on User-Agent later
+        
+    if 'show_browser_window' not in st.session_state:
+        st.session_state.show_browser_window = True
+        
+    if 'browser_view_width' not in st.session_state:
+        st.session_state.browser_view_width = 1000
+        
+    if 'browser_view_height' not in st.session_state:
+        st.session_state.browser_view_height = 600
 
 def initialize_agent():
     """Initialize the autonomous agent"""
