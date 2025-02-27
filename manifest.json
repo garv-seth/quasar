@@ -1,28 +1,26 @@
 {
-  "name": "QA³: Quantum-Accelerated AI Agent",
+  "name": "QUASAR QA³: Quantum-Accelerated AI Agent",
   "short_name": "QA³",
-  "description": "Quantum-Accelerated AI Agent with true agentic capabilities",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#1E1E2E",
+  "background_color": "#0E1117",
   "theme_color": "#7B2FFF",
+  "description": "A quantum-powered AI agent for advanced computational tasks",
   "icons": [
     {
-      "src": "icon-192.png",
+      "src": "/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/png"
     },
     {
-      "src": "icon-512.png",
+      "src": "/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/png"
     }
   ],
   "screenshots": [
     {
-      "src": "screenshot1.png",
+      "src": "/screenshot1.png",
       "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide"
@@ -32,28 +30,27 @@
   "prefer_related_applications": false,
   "shortcuts": [
     {
-      "name": "Quantum Search",
-      "url": "/?page=search",
-      "description": "Perform a quantum-accelerated search"
+      "name": "Quantum Circuits",
+      "short_name": "Circuits",
+      "description": "Design and run quantum circuits",
+      "url": "/?page=Quantum+Circuits",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     },
     {
-      "name": "Quantum Circuit Builder",
-      "url": "/?page=circuits",
-      "description": "Build and test quantum circuits"
+      "name": "Factorization",
+      "short_name": "Factorize",
+      "description": "Run quantum factorization algorithms",
+      "url": "/?page=Factorization",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     }
   ],
-  "orientation": "any",
-  "categories": ["productivity", "education", "utilities"],
+  "categories": ["productivity", "education", "scientific"],
   "lang": "en-US",
+  "orientation": "any",
   "dir": "ltr",
   "iarc_rating_id": "",
   "scope": "/",
-  "id": "quasar-qa3",
   "edge_side_panel": {
     "preferred_width": 400
-  },
-  "launch_handler": {
-    "client_mode": "auto"
-  },
-  "offline_enabled": true
+  }
 }

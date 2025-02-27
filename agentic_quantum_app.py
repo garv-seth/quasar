@@ -1378,13 +1378,6 @@ def main():
     except Exception as e:
         logger.error(f"Failed to start static file server: {str(e)}")
     
-    # Import PWA integration
-    try:
-        from pwa_integration import initialize_pwa, display_pwa_card, add_browser_integration
-        has_pwa = True
-    except ImportError:
-        has_pwa = False
-    
     # Set up the page
     st.set_page_config(
         page_title="QA³: Quantum-Accelerated AI Agent",
@@ -1393,9 +1386,29 @@ def main():
         initial_sidebar_state="expanded"
     )
     
-    # Initialize PWA if available
-    if has_pwa:
+    # Import and initialize PWA integration if available
+    try:
+        from pwa_integration import initialize_pwa, display_pwa_card, check_pwa_mode, add_browser_integration
+        has_pwa = True
+        
+        # Initialize PWA components
         initialize_pwa()
+        
+        # Add browser integration for PWA mode
+        add_browser_integration()
+        
+        # Check if we're in PWA mode
+        is_pwa_mode = check_pwa_mode()
+        if is_pwa_mode:
+            st.session_state.pwa_mode = True
+    except ImportError as e:
+        has_pwa = False
+        st.session_state.pwa_mode = False
+        print(f"PWA integration not available: {e}")
+    except Exception as e:
+        has_pwa = False
+        st.session_state.pwa_mode = False
+        print(f"Error initializing PWA: {e}")
     
     # Display the header
     display_header()

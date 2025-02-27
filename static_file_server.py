@@ -55,21 +55,25 @@ def run_server(port=8765, bind="0.0.0.0"):
     # Try to find an available port, starting with the specified one
     max_attempts = 5
     httpd = None
+    actual_port = None
     
     for attempt in range(max_attempts):
         try:
             server_address = (bind, port)
             httpd = HTTPServer(server_address, StaticFileHandler)
+            actual_port = port
             logger.info(f"Starting static file server on http://{bind}:{port}")
             break
         except OSError as e:
-            if e.errno == 98:  # Address already in use
+            error_code = getattr(e, 'errno', None)
+            if error_code in (98, 10048):  # Address already in use (Linux/Windows)
                 logger.warning(f"Port {port} is already in use, trying port {port + 1}")
                 port += 1
                 if attempt == max_attempts - 1:
                     logger.error(f"Could not find an available port after {max_attempts} attempts")
                     raise
             else:
+                logger.error(f"Error starting server: {str(e)}")
                 raise
     
     if httpd:
@@ -83,7 +87,7 @@ def run_server(port=8765, bind="0.0.0.0"):
         logger.error("Failed to initialize HTTP server")
         return None
     
-    return port
+    return actual_port
 
 def start_server_thread(port=8765):
     """Start the server in a background thread"""

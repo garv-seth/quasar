@@ -7,207 +7,254 @@ class QUASARPwa {
   constructor() {
     this.db = null;
     this.swRegistration = null;
-    this.isInstalled = false;
-    this.notificationsEnabled = false;
     this.installPrompt = null;
-    this.statusUpdates = {};
+    this.status = {
+      serviceWorkerSupported: 'serviceWorker' in navigator,
+      serviceWorkerRegistered: false,
+      serviceWorkerActive: false,
+      databaseSupported: 'indexedDB' in window,
+      databaseInitialized: false,
+      pushManagerSupported: 'PushManager' in window,
+      notificationsSupported: 'Notification' in window,
+      notificationsEnabled: false,
+      installPromptAvailable: false,
+      installed: false,
+      pwaMode: window.matchMedia('(display-mode: standalone)').matches,
+      online: navigator.onLine
+    };
     
-    // Check if running in a PWA context
-    this.isPwa = window.matchMedia('(display-mode: standalone)').matches || 
-                window.navigator.standalone || 
-                document.referrer.includes('android-app://');
-    
-    // Initialize when the page loads
-    window.addEventListener('load', () => this.init());
+    // Bind methods to this
+    this.init = this.init.bind(this);
+    this.initializeServiceWorker = this.initializeServiceWorker.bind(this);
+    this.initializeDatabase = this.initializeDatabase.bind(this);
+    this.registerEventListeners = this.registerEventListeners.bind(this);
+    this.storeTask = this.storeTask.bind(this);
+    this.installPwa = this.installPwa.bind(this);
+    this.toggleNotifications = this.toggleNotifications.bind(this);
+    this.sendTestNotification = this.sendTestNotification.bind(this);
+    this.updatePwaStatus = this.updatePwaStatus.bind(this);
+    this.sendToStreamlit = this.sendToStreamlit.bind(this);
   }
   
   async init() {
-    console.log('Initializing QUASAR PWA system');
+    console.log('Initializing QUASAR QA³ PWA...');
     
-    // Register service worker if supported
-    if ('serviceWorker' in navigator) {
+    // Update installed state
+    this.status.installed = 
+      window.matchMedia('(display-mode: standalone)').matches || 
+      window.navigator.standalone ||
+      document.referrer.includes('android-app://');
+    
+    // Initialize service worker
+    if (this.status.serviceWorkerSupported) {
       await this.initializeServiceWorker();
-    } else {
-      console.warn('Service Worker is not supported in this browser');
-      this.updatePwaStatus('serviceWorkerSupported', false);
     }
     
-    // Initialize IndexedDB for offline storage
-    if ('indexedDB' in window) {
+    // Initialize database
+    if (this.status.databaseSupported) {
       await this.initializeDatabase();
-    } else {
-      console.warn('IndexedDB is not supported in this browser');
-      this.updatePwaStatus('databaseSupported', false);
     }
     
-    // Register event listeners for install prompt and other events
+    // Register event listeners
     this.registerEventListeners();
     
-    // Check if already installed as PWA
+    // Check installation state
     this.checkInstallState();
     
-    // Update notification subscription status
-    await this.updateSubscriptionStatus();
+    // Update notification permissions
+    if (this.status.notificationsSupported) {
+      this.updateSubscriptionStatus();
+    }
     
     // Send initial status to Streamlit
     this.sendPwaStatusToStreamlit();
+    
+    console.log('QUASAR QA³ PWA initialized', this.status);
+    return this.status;
   }
   
   async initializeServiceWorker() {
     try {
       this.swRegistration = await navigator.serviceWorker.register('/sw.js');
-      console.log('Service Worker registered successfully:', this.swRegistration);
       this.updatePwaStatus('serviceWorkerRegistered', true);
       
-      // Check if service worker is active
       if (this.swRegistration.active) {
-        console.log('Service Worker is active');
         this.updatePwaStatus('serviceWorkerActive', true);
-      } else {
-        this.swRegistration.addEventListener('updatefound', () => {
-          const newWorker = this.swRegistration.installing;
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'activated') {
-              console.log('Service Worker activated');
-              this.updatePwaStatus('serviceWorkerActive', true);
-              this.sendPwaStatusToStreamlit();
-            }
-          });
-        });
       }
       
-      // Check if pushManager is available (needed for notifications)
-      if ('pushManager' in this.swRegistration) {
-        this.updatePwaStatus('pushManagerSupported', true);
-      } else {
-        console.warn('Push Manager is not supported');
-        this.updatePwaStatus('pushManagerSupported', false);
-      }
+      this.swRegistration.addEventListener('updatefound', () => {
+        const newWorker = this.swRegistration.installing;
+        
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'activated') {
+            this.updatePwaStatus('serviceWorkerActive', true);
+          }
+        });
+      });
+      
+      console.log('Service Worker registered successfully');
     } catch (error) {
       console.error('Service Worker registration failed:', error);
-      this.updatePwaStatus('serviceWorkerRegistered', false);
-      this.updatePwaStatus('serviceWorkerActive', false);
     }
   }
   
   async initializeDatabase() {
-    try {
-      this.db = await this.openDatabase();
-      console.log('IndexedDB initialized successfully');
-      this.updatePwaStatus('databaseInitialized', true);
-    } catch (error) {
-      console.error('Failed to initialize IndexedDB:', error);
-      this.updatePwaStatus('databaseInitialized', false);
-    }
-  }
-  
-  openDatabase() {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open('QUASAR_QA3_DB', 1);
+      
+      request.onerror = (event) => {
+        console.error('IndexedDB error:', event.target.errorCode);
+        reject(event.target.errorCode);
+      };
+      
+      request.onsuccess = (event) => {
+        this.db = event.target.result;
+        this.updatePwaStatus('databaseInitialized', true);
+        console.log('Database initialized successfully');
+        resolve(this.db);
+      };
       
       request.onupgradeneeded = (event) => {
         const db = event.target.result;
         
-        // Create object stores if they don't exist
-        if (!db.objectStoreNames.contains('offlineRequests')) {
-          db.createObjectStore('offlineRequests', { keyPath: 'timestamp' });
+        // Create object stores
+        if (!db.objectStoreNames.contains('tasks')) {
+          const taskStore = db.createObjectStore('tasks', { keyPath: 'id', autoIncrement: true });
+          taskStore.createIndex('status', 'status', { unique: false });
+          taskStore.createIndex('timestamp', 'timestamp', { unique: false });
         }
         
-        if (!db.objectStoreNames.contains('quantumTasks')) {
-          db.createObjectStore('quantumTasks', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('circuits')) {
+          const circuitStore = db.createObjectStore('circuits', { keyPath: 'id', autoIncrement: true });
+          circuitStore.createIndex('name', 'name', { unique: false });
+          circuitStore.createIndex('timestamp', 'timestamp', { unique: false });
         }
         
         if (!db.objectStoreNames.contains('settings')) {
           db.createObjectStore('settings', { keyPath: 'key' });
         }
       };
+    });
+  }
+  
+  openDatabase() {
+    return new Promise((resolve, reject) => {
+      if (this.db) {
+        resolve(this.db);
+        return;
+      }
       
-      request.onsuccess = (event) => {
-        resolve(event.target.result);
-      };
+      const request = indexedDB.open('QUASAR_QA3_DB', 1);
       
       request.onerror = (event) => {
-        console.error('IndexedDB error:', event.target.error);
-        reject(event.target.error);
+        console.error('IndexedDB error:', event.target.errorCode);
+        reject(event.target.errorCode);
+      };
+      
+      request.onsuccess = (event) => {
+        this.db = event.target.result;
+        resolve(this.db);
       };
     });
   }
   
   async storeTask(task) {
-    if (!this.db) {
-      console.error('Database not initialized');
-      return false;
-    }
-    
     try {
-      const tx = this.db.transaction('quantumTasks', 'readwrite');
-      const store = tx.objectStore('quantumTasks');
+      const db = await this.openDatabase();
       
-      // Add the task
-      await store.put(task);
-      
-      // Complete the transaction
-      await new Promise((resolve, reject) => {
-        tx.oncomplete = resolve;
-        tx.onerror = reject;
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['tasks'], 'readwrite');
+        const store = transaction.objectStore('tasks');
+        
+        // Add timestamp if not present
+        if (!task.timestamp) {
+          task.timestamp = Date.now();
+        }
+        
+        // Add status if not present
+        if (!task.status) {
+          task.status = 'pending';
+        }
+        
+        const request = store.add(task);
+        
+        request.onsuccess = (event) => {
+          console.log('Task stored successfully with ID:', event.target.result);
+          resolve({ 
+            success: true, 
+            id: event.target.result,
+            message: 'Task stored successfully'
+          });
+        };
+        
+        request.onerror = (event) => {
+          console.error('Error storing task:', event.target.error);
+          reject({
+            success: false,
+            error: event.target.error.message,
+            message: 'Failed to store task'
+          });
+        };
       });
-      
-      console.log('Task stored successfully:', task.id);
-      return true;
     } catch (error) {
-      console.error('Failed to store task:', error);
-      return false;
+      console.error('Database error:', error);
+      throw error;
     }
   }
   
   async storeData(key, data) {
-    if (!this.db) {
-      console.error('Database not initialized');
-      return false;
-    }
-    
     try {
-      const tx = this.db.transaction('settings', 'readwrite');
-      const store = tx.objectStore('settings');
+      const db = await this.openDatabase();
       
-      // Add the data
-      await store.put({ key, value: data, timestamp: Date.now() });
-      
-      // Complete the transaction
-      await new Promise((resolve, reject) => {
-        tx.oncomplete = resolve;
-        tx.onerror = reject;
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['settings'], 'readwrite');
+        const store = transaction.objectStore('settings');
+        
+        const request = store.put({ key, value: data, timestamp: Date.now() });
+        
+        request.onsuccess = () => {
+          resolve({ success: true, message: 'Data stored successfully' });
+        };
+        
+        request.onerror = (event) => {
+          reject({ 
+            success: false, 
+            error: event.target.error.message,
+            message: 'Failed to store data'
+          });
+        };
       });
-      
-      console.log(`Data stored successfully for key: ${key}`);
-      return true;
     } catch (error) {
-      console.error(`Failed to store data for key ${key}:`, error);
-      return false;
+      console.error('Database error:', error);
+      throw error;
     }
   }
   
   async getData(key) {
-    if (!this.db) {
-      console.error('Database not initialized');
-      return null;
-    }
-    
     try {
-      const tx = this.db.transaction('settings', 'readonly');
-      const store = tx.objectStore('settings');
+      const db = await this.openDatabase();
       
-      // Get the data
-      const data = await new Promise((resolve, reject) => {
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['settings'], 'readonly');
+        const store = transaction.objectStore('settings');
+        
         const request = store.get(key);
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = reject;
+        
+        request.onsuccess = (event) => {
+          if (event.target.result) {
+            resolve(event.target.result.value);
+          } else {
+            resolve(null);
+          }
+        };
+        
+        request.onerror = (event) => {
+          reject(event.target.error);
+        };
       });
-      
-      return data ? data.value : null;
     } catch (error) {
-      console.error(`Failed to get data for key ${key}:`, error);
-      return null;
+      console.error('Database error:', error);
+      throw error;
     }
   }
   
@@ -221,286 +268,240 @@ class QUASARPwa {
   }
   
   registerEventListeners() {
-    // Listen for beforeinstallprompt event to capture install prompt
+    // Listen for the beforeinstallprompt event
     window.addEventListener('beforeinstallprompt', (event) => {
-      // Prevent the default prompt
+      // Prevent Chrome 67 and earlier from automatically showing the prompt
       event.preventDefault();
       
-      // Save the event for later use
+      // Stash the event so it can be triggered later
       this.installPrompt = event;
-      
-      // Update status
       this.updatePwaStatus('installPromptAvailable', true);
-      this.sendPwaStatusToStreamlit();
       
-      console.log('Install prompt is available');
+      console.log('Install prompt available');
     });
     
-    // Listen for appinstalled event to know when PWA is installed
-    window.addEventListener('appinstalled', () => {
-      this.isInstalled = true;
-      this.installPrompt = null;
-      
+    // Listen for the appinstalled event
+    window.addEventListener('appinstalled', (event) => {
       this.updatePwaStatus('installed', true);
       this.updatePwaStatus('installPromptAvailable', false);
-      this.sendPwaStatusToStreamlit();
+      this.installPrompt = null;
       
-      console.log('PWA was installed');
+      console.log('QUASAR QA³ PWA installed');
     });
     
     // Listen for online/offline events
     window.addEventListener('online', () => {
       this.updatePwaStatus('online', true);
-      this.sendPwaStatusToStreamlit();
       console.log('App is online');
-      
-      // Try to sync pending tasks if service worker is active
-      if (this.swRegistration && this.swRegistration.active) {
-        this.swRegistration.sync.register('sync-quantum-tasks')
-          .catch(error => console.error('Failed to register sync:', error));
-      }
     });
     
     window.addEventListener('offline', () => {
       this.updatePwaStatus('online', false);
-      this.sendPwaStatusToStreamlit();
       console.log('App is offline');
     });
     
-    // Listen for messages from service worker
-    navigator.serviceWorker.addEventListener('message', (event) => {
-      console.log('Message from Service Worker:', event.data);
-      
-      // Handle different message types
-      if (event.data.type === 'syncComplete') {
-        this.sendToStreamlit('syncComplete', event.data.tasks);
-      }
-    });
-    
-    // Listen for display-mode changes
+    // Add display mode media query listener
     window.matchMedia('(display-mode: standalone)').addEventListener('change', (event) => {
-      this.isPwa = event.matches;
-      this.updatePwaStatus('pwaMode', this.isPwa);
-      this.sendPwaStatusToStreamlit();
+      this.updatePwaStatus('pwaMode', event.matches);
+      console.log('PWA mode:', event.matches);
     });
   }
   
   checkInstallState() {
-    // Check if the app is already installed as a PWA
-    this.isPwa = window.matchMedia('(display-mode: standalone)').matches || 
-               window.navigator.standalone || 
-               document.referrer.includes('android-app://');
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+    const isIosStandalone = window.navigator.standalone;
+    const isInstalled = isStandalone || isIosStandalone;
     
-    if (this.isPwa) {
-      this.isInstalled = true;
-      this.updatePwaStatus('installed', true);
-      this.updatePwaStatus('pwaMode', true);
-    } else {
-      this.updatePwaStatus('pwaMode', false);
-    }
+    this.updatePwaStatus('installed', isInstalled);
+    this.updatePwaStatus('pwaMode', isInstalled);
   }
   
   async installPwa() {
-    // Check if install prompt is available
     if (!this.installPrompt) {
       console.warn('Install prompt not available');
-      return false;
+      return { success: false, message: 'Install prompt not available' };
     }
     
-    try {
-      // Show the install prompt
-      this.installPrompt.prompt();
-      
-      // Wait for the user to respond to the prompt
-      const choiceResult = await this.installPrompt.userChoice;
-      
-      if (choiceResult.outcome === 'accepted') {
-        console.log('User accepted the PWA installation');
-        this.isInstalled = true;
-        this.installPrompt = null;
-        
-        this.updatePwaStatus('installed', true);
-        this.updatePwaStatus('installPromptAvailable', false);
-        
-        return true;
-      } else {
-        console.log('User declined the PWA installation');
-        return false;
-      }
-    } catch (error) {
-      console.error('Error during PWA installation:', error);
-      return false;
-    } finally {
-      this.sendPwaStatusToStreamlit();
+    // Show the install prompt
+    this.installPrompt.prompt();
+    
+    // Wait for the user to respond to the prompt
+    const choiceResult = await this.installPrompt.userChoice;
+    
+    // Clear the install prompt
+    this.installPrompt = null;
+    this.updatePwaStatus('installPromptAvailable', false);
+    
+    if (choiceResult.outcome === 'accepted') {
+      console.log('User accepted the install prompt');
+      return { success: true, message: 'Installation accepted' };
+    } else {
+      console.log('User dismissed the install prompt');
+      return { success: false, message: 'Installation declined' };
     }
   }
   
   async updateSubscriptionStatus() {
-    if (!this.swRegistration || !('pushManager' in this.swRegistration)) {
-      this.updatePwaStatus('notificationsSupported', false);
+    if (!this.status.notificationsSupported) {
       return;
     }
     
-    try {
-      const subscription = await this.swRegistration.pushManager.getSubscription();
-      this.notificationsEnabled = !!subscription;
-      
-      this.updatePwaStatus('notificationsSupported', true);
-      this.updatePwaStatus('notificationsEnabled', this.notificationsEnabled);
-      
-      this.updateNotificationUI();
-    } catch (error) {
-      console.error('Error checking notification status:', error);
-      this.updatePwaStatus('notificationsSupported', false);
-    }
+    // Check if we have permission
+    const permission = Notification.permission;
+    const notificationsEnabled = permission === 'granted';
+    
+    this.updatePwaStatus('notificationsEnabled', notificationsEnabled);
+    this.updateNotificationUI();
   }
   
   updateNotificationUI() {
-    // Find notification toggle button if it exists
+    // Update notification toggle button text
     const notificationToggle = document.getElementById('notification-toggle');
     if (notificationToggle) {
-      notificationToggle.textContent = this.notificationsEnabled ? 
-        'Disable Notifications' : 'Enable Notifications';
+      notificationToggle.innerText = this.status.notificationsEnabled 
+        ? 'Disable Notifications'
+        : 'Enable Notifications';
     }
   }
   
   async toggleNotifications() {
-    if (!this.swRegistration || !('pushManager' in this.swRegistration)) {
-      console.warn('Push notifications are not supported');
-      return false;
+    if (!this.status.notificationsSupported) {
+      console.warn('Notifications not supported');
+      return { success: false, message: 'Notifications not supported' };
     }
     
-    try {
-      if (this.notificationsEnabled) {
-        // Unsubscribe from push notifications
-        const subscription = await this.swRegistration.pushManager.getSubscription();
-        if (subscription) {
-          await subscription.unsubscribe();
-          this.notificationsEnabled = false;
-          console.log('Notifications disabled');
-        }
-      } else {
-        // Request permission for notifications
+    if (this.status.notificationsEnabled) {
+      // Can't actually revoke permission once granted, just update UI
+      console.log('Notification permissions cannot be revoked once granted');
+      
+      return { 
+        success: false, 
+        message: 'Notification permissions cannot be revoked. Clear site data in browser settings to revoke.'
+      };
+    } else {
+      // Request permission
+      try {
         const permission = await Notification.requestPermission();
-        if (permission !== 'granted') {
-          console.warn('Notification permission denied');
-          return false;
+        const notificationsEnabled = permission === 'granted';
+        
+        this.updatePwaStatus('notificationsEnabled', notificationsEnabled);
+        this.updateNotificationUI();
+        
+        if (notificationsEnabled) {
+          // Send a test notification
+          this.sendTestNotification();
+          return { success: true, message: 'Notifications enabled' };
+        } else {
+          return { success: false, message: 'Notification permission denied' };
         }
-        
-        // Get the server's public key (would normally come from your server)
-        // For demo purposes, we'll use a dummy key
-        const applicationServerKey = this.urlB64ToUint8Array(
-          'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U'
-        );
-        
-        // Subscribe to push notifications
-        const subscription = await this.swRegistration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: applicationServerKey
-        });
-        
-        this.notificationsEnabled = true;
-        console.log('Notifications enabled');
-        
-        // In a real app, you would send the subscription to your server
-        console.log('Notification subscription:', JSON.stringify(subscription));
+      } catch (error) {
+        console.error('Error requesting notification permission:', error);
+        return { success: false, message: 'Error requesting permission', error };
       }
-      
-      this.updatePwaStatus('notificationsEnabled', this.notificationsEnabled);
-      this.updateNotificationUI();
-      this.sendPwaStatusToStreamlit();
-      
-      return true;
-    } catch (error) {
-      console.error('Error toggling notifications:', error);
-      return false;
     }
   }
   
   async sendTestNotification() {
-    if (!('Notification' in window)) {
-      console.warn('Notifications not supported');
-      return false;
+    if (!this.status.notificationsSupported || !this.status.notificationsEnabled) {
+      console.warn('Notifications not supported or not enabled');
+      return { success: false, message: 'Notifications not enabled' };
     }
     
-    if (Notification.permission !== 'granted') {
-      const permission = await Notification.requestPermission();
-      if (permission !== 'granted') {
-        console.warn('Notification permission denied');
-        return false;
+    try {
+      // Send via service worker if available
+      if (this.swRegistration) {
+        await this.swRegistration.showNotification('QUASAR QA³ Notification', {
+          body: 'Notification system is working!',
+          icon: '/icon-192.png',
+          badge: '/icon-192.png',
+          vibrate: [100, 50, 100],
+          data: {
+            dateOfArrival: Date.now(),
+            primaryKey: 1
+          },
+          actions: [
+            {
+              action: 'explore',
+              title: 'View Quantum App',
+              icon: '/icon-192.png'
+            }
+          ]
+        });
+      } else {
+        // Fall back to regular notification
+        new Notification('QUASAR QA³ Notification', {
+          body: 'Notification system is working!',
+          icon: '/icon-192.png'
+        });
       }
+      
+      return { success: true, message: 'Test notification sent' };
+    } catch (error) {
+      console.error('Error sending notification:', error);
+      return { success: false, message: 'Error sending notification', error };
     }
-    
-    // Create and show a notification
-    const notification = new Notification('QUASAR QA³', {
-      body: 'This is a test notification from the Quantum-Accelerated AI Agent',
-      icon: '/icon-192.png',
-      badge: '/icon-192.png'
-    });
-    
-    notification.onclick = () => {
-      console.log('Notification clicked');
-      window.focus();
-      notification.close();
-    };
-    
-    return true;
   }
   
   sendPwaStatusToStreamlit() {
-    // Send the entire status object to Streamlit
-    this.sendToStreamlit('pwaStatus', this.statusUpdates);
+    Object.entries(this.status).forEach(([key, value]) => {
+      this.sendToStreamlit(key, value);
+    });
   }
   
   updatePwaStatus(key, value) {
-    this.statusUpdates[key] = value;
-  }
-  
-  sendToStreamlit(key, value) {
-    // Check if Streamlit is available
-    if (window.Streamlit && window.Streamlit.setComponentValue) {
-      window.Streamlit.setComponentValue({
-        [key]: value
-      });
-    } else {
-      console.log('Streamlit not available, status update:', key, value);
+    if (this.status[key] !== value) {
+      this.status[key] = value;
+      this.sendToStreamlit(key, value);
     }
   }
   
+  sendToStreamlit(key, value) {
+    // Use Streamlit's component communication mechanism if available
+    if (window.Streamlit) {
+      const data = {
+        pwaStatus: { [key]: value }
+      };
+      window.Streamlit.setComponentValue(data);
+    }
+    
+    // Also dispatch a custom event
+    window.parent.postMessage({
+      type: 'pwaStatus',
+      key,
+      value
+    }, '*');
+  }
+  
+  // Utility function for web push
   urlB64ToUint8Array(base64String) {
     const padding = '='.repeat((4 - base64String.length % 4) % 4);
     const base64 = (base64String + padding)
       .replace(/\-/g, '+')
       .replace(/_/g, '/');
-      
+    
     const rawData = window.atob(base64);
     const outputArray = new Uint8Array(rawData.length);
     
     for (let i = 0; i < rawData.length; ++i) {
       outputArray[i] = rawData.charCodeAt(i);
     }
+    
     return outputArray;
   }
 }
 
-// Initialize the QUASAR PWA system
-const quasarPwa = new QUASARPwa();
-
-// Export for use in the application
-window.quasarPwa = quasarPwa;
-
 // Function to check if we're in PWA mode
 function isPwaMode() {
   return window.matchMedia('(display-mode: standalone)').matches || 
-         window.navigator.standalone || 
+         window.navigator.standalone ||
          document.referrer.includes('android-app://');
 }
 
-// Add a global method to install the PWA
-window.installQuasarPwa = () => quasarPwa.installPwa();
+// Initialize the PWA system
+window.quasarPwa = new QUASARPwa();
+window.quasarPwa.init();
 
-// Add a global method to toggle notifications
-window.toggleQuasarNotifications = () => quasarPwa.toggleNotifications();
-
-// Add a global method to send a test notification
-window.sendQuasarTestNotification = () => quasarPwa.sendTestNotification();
+// Expose some methods globally
+window.installQuasarPwa = window.quasarPwa.installPwa;
+window.toggleQuasarNotifications = window.quasarPwa.toggleNotifications;
+window.sendQuasarTestNotification = window.quasarPwa.sendTestNotification;
