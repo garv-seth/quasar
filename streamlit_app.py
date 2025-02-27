@@ -2,18 +2,16 @@
 Q3A: Quantum-Accelerated AI Agent
 Enhanced Streamlit Interface with improved UI and quantum integration
 
-This application serves as the main entry point for the Quantum AI Agent platform,
-providing an intuitive interface for leveraging quantum computing capabilities.
+A unified agentic interface leveraging quantum computing capabilities.
 """
 
 import streamlit as st
 import os
 import time
-import asyncio
 import logging
 import json
+import random
 from typing import Dict, List, Any, Optional
-import base64
 from datetime import datetime
 
 # Configure logging
@@ -85,6 +83,7 @@ class QuantumProcessor:
         """Set up the quantum computing device with Azure if available"""
         if not PENNYLANE_AVAILABLE:
             self.device = "simulation_fallback"
+            logger.info("Using simulation fallback due to PennyLane unavailability")
             return
             
         if self.real_hardware_available:
@@ -254,23 +253,6 @@ class QuantumProcessor:
             "quantum_advantage": False
         }
     
-    def _is_prime(self, n: int) -> bool:
-        """Check if a number is prime"""
-        if n <= 1:
-            return False
-        if n <= 3:
-            return True
-        if n % 2 == 0 or n % 3 == 0:
-            return False
-        
-        i = 5
-        while i * i <= n:
-            if n % i == 0 or n % (i + 2) == 0:
-                return False
-            i += 6
-            
-        return True
-    
     def quantum_search(self, query: str, database_size: int = 100) -> Dict[str, Any]:
         """Perform a quantum-enhanced search (using principles from Grover's algorithm)"""
         start_time = time.time()
@@ -285,7 +267,6 @@ class QuantumProcessor:
                 
                 # Choose a random "marked" item that matches the query
                 # In a real implementation, this would be determined by query matching
-                import random
                 marked_item = random.randint(0, min(database_size - 1, 2**self.n_qubits - 1))
                 
                 @qml.qnode(self.device)
@@ -405,7 +386,6 @@ class QuantumProcessor:
         
         # Simulate search results
         search_results = []
-        import random
         
         # Create a primary result
         search_results.append({
@@ -439,6 +419,23 @@ class QuantumProcessor:
             "success": True,
             "quantum_advantage": False
         }
+    
+    def _is_prime(self, n: int) -> bool:
+        """Check if a number is prime"""
+        if n <= 1:
+            return False
+        if n <= 3:
+            return True
+        if n % 2 == 0 or n % 3 == 0:
+            return False
+        
+        i = 5
+        while i * i <= n:
+            if n % i == 0 or n % (i + 2) == 0:
+                return False
+            i += 6
+            
+        return True
     
     def quantum_optimization(self, resources: Dict[str, Any], constraints: List[str]) -> Dict[str, Any]:
         """Resource optimization with quantum acceleration using QAOA"""
@@ -656,17 +653,19 @@ class AIProcessor:
         self.average_response_time = 0
         self.last_response_time = 0
     
-    async def process_query(self, query: str, quantum_context: Dict[str, Any] = None) -> Dict[str, Any]:
+    def process_query(self, query: str, quantum_context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Process a user query with appropriate AI model"""
         start_time = time.time()
         self.total_queries += 1
         
         # Add quantum context to the prompt if available
         system_content = """You are Q3A, a Quantum-Accelerated AI Agent. You combine advanced AI capabilities with quantum computing to solve problems more efficiently. 
-        
+
 When appropriate, you leverage quantum algorithms such as Shor's algorithm for factorization, Grover's algorithm for search, and QAOA for optimization problems.
 
-You should explain concepts clearly and provide insights into how quantum computing provides advantages for certain computational tasks.
+You should explain concepts clearly and provide insights into how quantum computing provides advantages for certain computational tasks. Be helpful, accurate, and show your quantum advantage where possible.
+
+If the user asks about factorization, search, or optimization problems, mention that you can use quantum computing to accelerate these tasks. If you're actually using quantum acceleration for a task, highlight this fact.
 """
         
         if quantum_context:
@@ -679,7 +678,7 @@ You should explain concepts clearly and provide insights into how quantum comput
             # Try Claude first if configured
             if self.use_claude and self.claude_client:
                 try:
-                    response = await self._async_call_claude(query, system_content)
+                    response = self._call_claude(query, system_content)
                 except Exception as e:
                     logger.error(f"Error calling Claude: {str(e)}")
                     response = None
@@ -687,7 +686,7 @@ You should explain concepts clearly and provide insights into how quantum comput
             # Fallback to OpenAI if Claude not available or failed
             if response is None and self.openai_client:
                 try:
-                    response = await self._async_call_openai(query, system_content)
+                    response = self._call_openai(query, system_content)
                 except Exception as e:
                     logger.error(f"Error calling OpenAI: {str(e)}")
                     response = None
@@ -722,7 +721,7 @@ You should explain concepts clearly and provide insights into how quantum comput
                 "success": False
             }
     
-    async def _async_call_claude(self, query: str, system_content: str) -> str:
+    def _call_claude(self, query: str, system_content: str) -> str:
         """Call Claude API with the correct format (using system parameter)"""
         if not self.claude_client:
             return None
@@ -742,7 +741,7 @@ You should explain concepts clearly and provide insights into how quantum comput
             logger.error(f"Error in Claude API call: {str(e)}")
             return None
     
-    async def _async_call_openai(self, query: str, system_content: str) -> str:
+    def _call_openai(self, query: str, system_content: str) -> str:
         """Call OpenAI API with proper format"""
         if not self.openai_client:
             return None
@@ -768,9 +767,9 @@ You should explain concepts clearly and provide insights into how quantum comput
         query_lower = query.lower()
         
         quantum_indicators = {
-            "factorization": ["factorize", "factor", "factors of", "prime factors"],
-            "search": ["search", "find", "locate", "lookup"],
-            "optimization": ["optimize", "allocation", "maximize", "minimize", "best arrangement"]
+            "factorization": ["factor", "factors", "factorize", "prime factors", "find factors", "factorization"],
+            "search": ["search", "find", "locate", "lookup", "search for", "find information"],
+            "optimization": ["optimize", "optimization", "maximize", "minimize", "best arrangement", "allocation"]
         }
         
         task_type = "general"
@@ -782,6 +781,8 @@ You should explain concepts clearly and provide insights into how quantum comput
                     task_type = potential_type
                     confidence = 0.8
                     break
+            if confidence > 0:
+                break
         
         # Extract potential numbers for factorization
         import re
@@ -812,13 +813,14 @@ You should explain concepts clearly and provide insights into how quantum comput
         }
 
 
-class Q3Agent:
+class QuantumAgent:
     """Main Quantum-Accelerated AI Agent class"""
     
-    def __init__(self, use_real_quantum: bool = True, use_claude: bool = True):
-        """Initialize the QA³ agent with its processors"""
-        self.quantum_processor = QuantumProcessor(use_real_hardware=use_real_quantum)
+    def __init__(self, use_real_quantum: bool = True, use_claude: bool = True, n_qubits: int = 8):
+        """Initialize the Quantum Agent with its processors"""
+        self.quantum_processor = QuantumProcessor(use_real_hardware=use_real_quantum, n_qubits=n_qubits)
         self.ai_processor = AIProcessor(use_claude=use_claude)
+        self.n_qubits = n_qubits
         
         # Maintain conversation history
         self.chat_history = []
@@ -829,7 +831,7 @@ class Q3Agent:
         self.successful_requests = 0
         self.start_time = time.time()
     
-    async def process_message(self, message: str) -> Dict[str, Any]:
+    def process_message(self, message: str) -> Dict[str, Any]:
         """Process a user message and determine the appropriate response approach"""
         start_time = time.time()
         self.total_requests += 1
@@ -915,7 +917,7 @@ class Q3Agent:
                     self.quantum_accelerated_requests += 1
             
             # Get AI response with quantum context
-            ai_response = await self.ai_processor.process_query(message, quantum_context)
+            ai_response = self.ai_processor.process_query(message, quantum_context)
             response_content = ai_response["response"]
             
             # Store the assistant's response
@@ -944,7 +946,7 @@ class Q3Agent:
             execution_time = time.time() - start_time
             logger.error(f"Error processing message: {str(e)}")
             
-            error_message = f"I encountered an error while processing your request. Please try again or contact support if the issue persists."
+            error_message = f"I encountered an error while processing your request. Please try again or contact support if the issue persists. Error: {str(e)}"
             
             # Store the error response
             self.chat_history.append({
@@ -969,7 +971,7 @@ class Q3Agent:
         ai_processor_status = self.ai_processor.get_status()
         
         return {
-            "agent_type": "Q3A (Quantum-Accelerated AI Agent)",
+            "agent_type": "Quantum-Accelerated AI Agent",
             "uptime": uptime,
             "total_requests": self.total_requests,
             "quantum_accelerated_requests": self.quantum_accelerated_requests,
@@ -979,16 +981,15 @@ class Q3Agent:
         }
 
 
-# Helper functions for async operations
-async def run_async(func, *args, **kwargs):
-    """Run a function asynchronously"""
-    return await func(*args, **kwargs)
-
-
-def init_streamlit_session():
+def init_session_state():
     """Initialize the Streamlit session state"""
     if "agent" not in st.session_state:
-        st.session_state.agent = Q3Agent(use_real_quantum=True, use_claude=True)
+        # Initialize with 8 qubits by default
+        st.session_state.agent = QuantumAgent(
+            use_real_quantum=True, 
+            use_claude=True,
+            n_qubits=8
+        )
     
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -1004,89 +1005,12 @@ def init_streamlit_session():
                 os.environ.get("AZURE_QUANTUM_LOCATION")
             ])
         }
-        
-    if "active_tab" not in st.session_state:
-        st.session_state.active_tab = "Chat"
-        
-    if "factorization_number" not in st.session_state:
-        st.session_state.factorization_number = 15
-        
-    if "search_query" not in st.session_state:
-        st.session_state.search_query = ""
-        
-    if "search_results" not in st.session_state:
-        st.session_state.search_results = None
-
-
-def render_api_configuration():
-    """Render API configuration interface in the sidebar"""
-    with st.expander("API Configuration"):
-        # API key configuration
-        st.write("Configure API keys for enhanced capabilities:")
-        
-        # Claude API
-        claude_key = os.environ.get("ANTHROPIC_API_KEY", "")
-        claude_status = "✅ Configured" if claude_key else "❌ Not configured"
-        st.write(f"Claude API: {claude_status}")
-        
-        # Azure Quantum
-        azure_configured = all([
-            os.environ.get("AZURE_QUANTUM_SUBSCRIPTION_ID"),
-            os.environ.get("AZURE_QUANTUM_RESOURCE_GROUP"),
-            os.environ.get("AZURE_QUANTUM_WORKSPACE_NAME"),
-            os.environ.get("AZURE_QUANTUM_LOCATION")
-        ])
-        azure_status = "✅ Configured" if azure_configured else "❌ Not configured"
-        st.write(f"Azure Quantum: {azure_status}")
-        
-        # OpenAI API (fallback)
-        openai_key = os.environ.get("OPENAI_API_KEY", "")
-        openai_status = "✅ Configured" if openai_key else "❌ Not configured"
-        st.write(f"OpenAI API (fallback): {openai_status}")
-        
-        if st.button("Check API Status"):
-            with st.spinner("Checking API status..."):
-                st.session_state.api_configured = {
-                    "claude": bool(os.environ.get("ANTHROPIC_API_KEY")),
-                    "openai": bool(os.environ.get("OPENAI_API_KEY")),
-                    "azure_quantum": all([
-                        os.environ.get("AZURE_QUANTUM_SUBSCRIPTION_ID"),
-                        os.environ.get("AZURE_QUANTUM_RESOURCE_GROUP"),
-                        os.environ.get("AZURE_QUANTUM_WORKSPACE_NAME"),
-                        os.environ.get("AZURE_QUANTUM_LOCATION")
-                    ])
-                }
-                st.success("API status updated")
-
-
-def display_agent_status():
-    """Display agent status in the sidebar"""
-    with st.expander("Agent Status", expanded=True):
-        if not hasattr(st.session_state, 'agent') or not st.session_state.agent:
-            st.write("Agent not initialized")
-            return
-        
-        # Get agent status
-        status = st.session_state.agent.get_status()
-        
-        # Quantum Processor
-        st.markdown("#### Quantum Processor")
-        st.write(f"Device: {status['quantum_processor']['device_type']}")
-        st.write(f"Backend: {status['quantum_processor']['backend']}")
-        st.write(f"Available Qubits: {status['quantum_processor']['qubits_available']}")
-        st.write(f"Using Real Hardware: {'Yes' if status['quantum_processor']['real_hardware'] else 'No'}")
-        
-        # AI Processor
-        st.markdown("#### AI Processor")
-        st.write(f"Active Model: {status['ai_processor']['active_model']}")
-        st.write(f"Claude: {status['ai_processor']['claude_status']}")
-        st.write(f"OpenAI: {status['ai_processor']['openai_status']}")
 
 
 def setup_page():
     """Set up the Streamlit page with proper styling"""
     st.set_page_config(
-        page_title="Q3A - Quantum-Accelerated AI Agent",
+        page_title="Quantum-Accelerated AI Agent",
         page_icon="⚛️",
         layout="wide"
     )
@@ -1095,10 +1019,13 @@ def setup_page():
     st.markdown("""
     <style>
     .main-header {
-        font-size: 3rem;
-        color: #4361ee;
+        font-size: 2.5rem;
+        background: linear-gradient(45deg, #4361ee, #7b2cbf);
+        color: white;
         text-align: center;
         margin-bottom: 1rem;
+        padding: 1rem;
+        border-radius: 10px;
         font-weight: 700;
     }
     
@@ -1131,117 +1058,162 @@ def setup_page():
         margin-bottom: 1.5rem;
     }
     
-    .search-result {
-        background-color: #f0f7ff;
+    /* Agent status card */
+    .agent-status {
+        background-color: #172a45;
+        color: white;
+        border-radius: 10px;
         padding: 1rem;
-        margin-bottom: 0.75rem;
-        border-radius: 0.5rem;
-        border-left: 3px solid #4361ee;
+        margin-bottom: 1rem;
     }
     
-    .factorization-result {
-        background-color: #f0fff4;
-        border: 1px solid #d0f0c0;
-        border-radius: 0.5rem;
-        padding: 1.5rem;
-        margin-top: 1.5rem;
+    .status-item {
+        display: flex;
+        justify-content: space-between;
+        margin: 0.5rem 0;
     }
     
-    .highlight {
-        font-weight: 700;
-        color: #4361ee;
+    .status-label {
+        color: #8892b0;
     }
     
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 2px;
+    .status-value {
+        color: #7b2cbf;
+        font-weight: bold;
     }
     
-    .stTabs [data-baseweb="tab"] {
-        height: 4rem;
-        white-space: pre-wrap;
-        background-color: #f0f2f6;
-        border-radius: 4px 4px 0 0;
-        gap: 1px;
-        padding-top: 10px;
-        padding-bottom: 10px;
-    }
-    
-    .stTabs [aria-selected="true"] {
-        background-color: #4361ee !important;
-        color: white !important;
-    }
-    
-    /* Make chat input taller */
+    /* Larger chat input */
     .stChatInput {
         padding: 15px !important;
         height: 80px !important;
     }
     
-    /* Improve the search box */
-    div[data-testid="stTextInput"] input {
-        height: 50px !important;
+    div[data-testid="stChatInput"] textarea {
+        height: 80px !important;
         font-size: 16px !important;
     }
     
-    /* Custom card component */
-    .quantum-card {
-        background-color: #f3f6ff;
+    .quantum-tag {
+        background-color: #7b2cbf;
+        color: white;
+        padding: 0.2rem 0.5rem;
         border-radius: 10px;
-        padding: 20px;
-        margin-bottom: 20px;
-        border-left: 5px solid #4361ee;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-    }
-    
-    .quantum-card h3 {
-        color: #4361ee;
-        margin-top: 0;
-    }
-    
-    .metric-row {
-        display: flex;
-        justify-content: space-around;
-        flex-wrap: wrap;
-        margin-bottom: 20px;
-    }
-    
-    .metric-card {
-        background-color: white;
-        border-radius: 10px;
-        padding: 15px;
-        margin: 10px;
-        width: 150px;
-        text-align: center;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-    }
-    
-    .metric-value {
-        font-size: 24px;
-        font-weight: bold;
-        color: #4361ee;
-        margin: 5px 0;
-    }
-    
-    .metric-label {
-        font-size: 14px;
-        color: #718096;
-    }
-    
-    footer {
-        text-align: center;
-        margin-top: 2rem;
-        padding-top: 1rem;
-        color: #718096;
+        margin-left: 0.5rem;
         font-size: 0.8rem;
-        border-top: 1px solid #e2e8f0;
+    }
+    
+    /* Better visibility for dark backgrounds */
+    .stMarkdown p {
+        color: #FFFFFF !important;
+    }
+    
+    .sidebar-header {
+        color: #7b2cbf;
+        font-weight: bold;
+        margin-top: 1rem;
     }
     </style>
     """, unsafe_allow_html=True)
 
 
-def display_chat_tab():
-    """Display the chat interface tab"""
-    st.markdown('<h2 class="sub-header">Chat with the Quantum AI Agent</h2>', unsafe_allow_html=True)
+def main():
+    """Main application function"""
+    # Set up page styling
+    setup_page()
+    
+    # Initialize session state
+    init_session_state()
+    
+    # Main header
+    st.markdown('<h1 class="main-header">Quantum-Accelerated AI Agent</h1>', unsafe_allow_html=True)
+    
+    # Sidebar with controls and status
+    with st.sidebar:
+        st.image("https://upload.wikimedia.org/wikipedia/commons/f/f5/Quantum_circuit_symbol.svg", width=100)
+        st.markdown("<p class='sidebar-header'>Quantum AI Settings</p>", unsafe_allow_html=True)
+        
+        # Quantum settings
+        use_real_hardware = st.checkbox(
+            "Use Real Quantum Hardware", 
+            value=st.session_state.api_configured["azure_quantum"],
+            disabled=not st.session_state.api_configured["azure_quantum"],
+            key="use_real_hardware"
+        )
+        
+        if not st.session_state.api_configured["azure_quantum"] and use_real_hardware:
+            st.warning("Azure Quantum credentials needed for real hardware")
+        
+        # Number of qubits
+        n_qubits = st.slider("Available Qubits", min_value=4, max_value=32, value=8, key="n_qubits")
+        
+        # Update agent if settings changed
+        if "agent" in st.session_state and (
+            n_qubits != st.session_state.agent.n_qubits or
+            use_real_hardware != st.session_state.agent.quantum_processor.use_real_hardware
+        ):
+            st.session_state.agent = QuantumAgent(
+                use_real_quantum=use_real_hardware,
+                use_claude=True,
+                n_qubits=n_qubits
+            )
+            st.success("Quantum settings updated")
+        
+        # Display agent status
+        st.markdown("<p class='sidebar-header'>Agent Status</p>", unsafe_allow_html=True)
+        
+        status = st.session_state.agent.get_status()
+        
+        with st.expander("Quantum Processor", expanded=True):
+            device_type = status["quantum_processor"]["device_type"]
+            is_real = "Yes" if status["quantum_processor"]["real_hardware"] else "No"
+            provider = status["quantum_processor"]["provider"]
+            
+            st.markdown(f"""
+            <div class='agent-status'>
+                <div class='status-item'>
+                    <span class='status-label'>Device:</span>
+                    <span class='status-value'>{device_type}</span>
+                </div>
+                <div class='status-item'>
+                    <span class='status-label'>Real Hardware:</span>
+                    <span class='status-value'>{is_real}</span>
+                </div>
+                <div class='status-item'>
+                    <span class='status-label'>Provider:</span>
+                    <span class='status-value'>{provider}</span>
+                </div>
+                <div class='status-item'>
+                    <span class='status-label'>Qubits:</span>
+                    <span class='status-value'>{n_qubits}</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with st.expander("AI Processor"):
+            active_model = status["ai_processor"]["active_model"]
+            
+            st.markdown(f"""
+            <div class='agent-status'>
+                <div class='status-item'>
+                    <span class='status-label'>Model:</span>
+                    <span class='status-value'>{active_model}</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with st.expander("About Quantum AI Agent"):
+            st.markdown("""
+            This agent uses quantum computing principles to accelerate specific tasks:
+            
+            - **Factorization**: Using principles from Shor's algorithm
+            - **Search**: Using principles from Grover's algorithm
+            - **Optimization**: Using QAOA (Quantum Approximate Optimization Algorithm)
+            
+            Ask about these capabilities to see quantum computing in action!
+            """)
+    
+    # Main chat interface
+    st.markdown("<p class='sub-header'>Interact with the Quantum-Accelerated AI Agent</p>", unsafe_allow_html=True)
     
     # Display chat messages from history
     for i, message in enumerate(st.session_state.messages):
@@ -1252,8 +1224,10 @@ def display_chat_tab():
         if role == "user":
             st.markdown(f'<div class="user-message">{content}</div>', unsafe_allow_html=True)
         else:
-            message_class = "quantum-message" if quantum_advantage else "assistant-message"
-            st.markdown(f'<div class="{message_class}">{content}</div>', unsafe_allow_html=True)
+            if quantum_advantage:
+                st.markdown(f'<div class="quantum-message">{content}<span class="quantum-tag">⚛️ Quantum-accelerated</span></div>', unsafe_allow_html=True)
+            else:
+                st.markdown(f'<div class="assistant-message">{content}</div>', unsafe_allow_html=True)
     
     # Chat input
     user_input = st.chat_input("Ask about quantum computing or enter a task...", key="chat_input")
@@ -1267,15 +1241,7 @@ def display_chat_tab():
         
         # Get agent response
         with st.spinner("Quantum processor thinking..."):
-            if asyncio.get_event_loop().is_running():
-                # We're already in an async context
-                response = asyncio.run_coroutine_threadsafe(
-                    st.session_state.agent.process_message(user_input),
-                    asyncio.get_event_loop()
-                ).result()
-            else:
-                # Create a new event loop
-                response = asyncio.run(st.session_state.agent.process_message(user_input))
+            response = st.session_state.agent.process_message(user_input)
         
         # Add assistant response to chat history
         st.session_state.messages.append({
@@ -1285,483 +1251,15 @@ def display_chat_tab():
         })
         
         # Display assistant response
-        message_class = "quantum-message" if response.get("quantum_advantage", False) else "assistant-message"
-        st.markdown(f'<div class="{message_class}">{response["content"]}</div>', unsafe_allow_html=True)
+        if response.get("quantum_advantage", False):
+            st.markdown(f'<div class="quantum-message">{response["content"]}<span class="quantum-tag">⚛️ Quantum-accelerated</span></div>', unsafe_allow_html=True)
+        else:
+            st.markdown(f'<div class="assistant-message">{response["content"]}</div>', unsafe_allow_html=True)
         
         # Force a rerun to update the UI
         st.rerun()
 
 
-def display_search_tab():
-    """Display the quantum search interface tab"""
-    st.markdown('<h2 class="sub-header">Quantum-Enhanced Search</h2>', unsafe_allow_html=True)
-    
-    col1, col2 = st.columns([3, 1])
-    
-    with col1:
-        search_query = st.text_input("Enter your search query:", key="search_box", value=st.session_state.search_query)
-    
-    with col2:
-        use_quantum = st.checkbox("Use quantum acceleration", value=True)
-        search_button = st.button("Search", key="search_button")
-    
-    if search_button and search_query:
-        st.session_state.search_query = search_query
-        
-        with st.spinner("Performing quantum-enhanced search..."):
-            if asyncio.get_event_loop().is_running():
-                # We're already in an async context
-                st.session_state.search_results = st.session_state.agent.quantum_processor.quantum_search(
-                    search_query, database_size=100
-                )
-            else:
-                # Create a new event loop
-                st.session_state.search_results = asyncio.run(
-                    run_async(lambda: st.session_state.agent.quantum_processor.quantum_search(
-                        search_query, database_size=100
-                    ))
-                )
-    
-    # Display search results if available
-    if st.session_state.search_results:
-        results = st.session_state.search_results
-        
-        # Display search metrics
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric("Query Time", f"{results['execution_time']:.4f}s")
-        
-        with col2:
-            if results.get("quantum_advantage", False):
-                st.metric("Method", "Quantum Search", delta="Faster")
-            else:
-                st.metric("Method", "Classical Search")
-        
-        with col3:
-            if "speedup" in results:
-                st.metric("Quantum Speedup", f"{results['speedup']:.2f}x")
-        
-        # Display result count
-        st.markdown(f"### Found {len(results['results'])} results")
-        
-        # Display individual results
-        for i, result in enumerate(results['results']):
-            with st.container():
-                st.markdown(f"""
-                <div class="search-result">
-                    <h3>{result['title']}</h3>
-                    <p>{result['content']}</p>
-                    <p><strong>Relevance:</strong> {result['relevance']:.2f} | <strong>Match type:</strong> {result['match_type']}</p>
-                </div>
-                """, unsafe_allow_html=True)
-
-
-def display_factorization_tab():
-    """Display the quantum factorization interface tab"""
-    st.markdown('<h2 class="sub-header">Quantum Factorization</h2>', unsafe_allow_html=True)
-    
-    st.markdown("""
-    This demonstration shows how quantum computing can accelerate integer factorization.
-    For educational purposes, we're using a simplified version inspired by Shor's algorithm.
-    """)
-    
-    col1, col2 = st.columns([3, 1])
-    
-    with col1:
-        number_to_factorize = st.number_input(
-            "Enter a number to factorize:", 
-            min_value=2, 
-            max_value=1000000, 
-            value=st.session_state.factorization_number,
-            step=1,
-            key="factorization_input"
-        )
-    
-    with col2:
-        use_quantum = st.checkbox("Use quantum acceleration", value=True, key="factorization_quantum")
-        factorize_button = st.button("Factorize", key="factorize_button")
-    
-    if factorize_button:
-        st.session_state.factorization_number = number_to_factorize
-        
-        with st.spinner("Computing factorization..."):
-            start_time = time.time()
-            
-            if asyncio.get_event_loop().is_running():
-                # We're already in an async context
-                factorization_result = st.session_state.agent.quantum_processor.factorize_number(
-                    number_to_factorize
-                )
-            else:
-                # Create a new event loop
-                factorization_result = asyncio.run(
-                    run_async(lambda: st.session_state.agent.quantum_processor.factorize_number(
-                        number_to_factorize
-                    ))
-                )
-            
-            total_time = time.time() - start_time
-        
-        # Display result
-        if factorization_result["success"]:
-            # Display factorization metrics
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.metric("Computation Time", f"{factorization_result['execution_time']:.4f}s")
-            
-            with col2:
-                if factorization_result.get("quantum_advantage", False):
-                    st.metric("Method", "Quantum Algorithm", delta="Faster")
-                else:
-                    st.metric("Method", "Classical Algorithm")
-            
-            with col3:
-                if factorization_result.get("quantum_advantage", False) and "circuit_depth" in factorization_result:
-                    st.metric("Circuit Depth", factorization_result["circuit_depth"])
-            
-            # Display factors
-            st.markdown(f"""
-            <div class="factorization-result">
-                <h3>Factorization of {number_to_factorize}</h3>
-                <p>The complete list of factors is:</p>
-                <p class="highlight">{', '.join(map(str, factorization_result["factors"]))}</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Display prime factorization if the number isn't prime
-            if len(factorization_result["factors"]) > 2:  # More than just 1 and itself
-                prime_factors = [f for f in factorization_result["factors"] if st.session_state.agent.quantum_processor._is_prime(f) and f != 1]
-                
-                if prime_factors:
-                    st.markdown(f"""
-                    <div class="factorization-result">
-                        <h3>Prime Factorization</h3>
-                        <p>The prime factorization is:</p>
-                        <p class="highlight">{' × '.join(map(str, prime_factors))}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-        else:
-            st.error(f"Error in factorization: {factorization_result.get('error', 'Unknown error')}")
-
-
-def display_optimization_tab():
-    """Display the quantum optimization interface tab"""
-    st.markdown('<h2 class="sub-header">Quantum Optimization</h2>', unsafe_allow_html=True)
-    
-    st.markdown("""
-    This demonstration shows how quantum computing can solve complex optimization problems.
-    We're using a simplified version inspired by the Quantum Approximate Optimization Algorithm (QAOA).
-    """)
-    
-    # Problem setup
-    st.markdown("### Problem Setup")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        problem_type = st.selectbox(
-            "Optimization problem type:",
-            ["Resource Allocation", "Portfolio Optimization", "Traveling Salesman", "Scheduling"],
-            index=0,
-            key="optimization_type"
-        )
-        
-        problem_size = st.slider(
-            "Problem size:", 
-            min_value=3, 
-            max_value=20, 
-            value=5,
-            step=1,
-            key="optimization_size"
-        )
-    
-    with col2:
-        use_quantum = st.checkbox(
-            "Use quantum acceleration", 
-            value=True,
-            key="optimization_quantum"
-        )
-        
-        constraint_count = st.slider(
-            "Number of constraints:", 
-            min_value=1, 
-            max_value=5, 
-            value=2,
-            step=1,
-            key="constraint_count"
-        )
-    
-    # Button to run optimization
-    optimize_button = st.button("Run Optimization", key="optimize_button")
-    
-    if optimize_button:
-        # Prepare resources and constraints based on problem type
-        if problem_type == "Resource Allocation":
-            resources = {
-                "items": [f"resource_{i}" for i in range(problem_size)],
-                "values": [random.randint(10, 50) for _ in range(problem_size)],
-                "weights": [random.randint(1, 10) for _ in range(problem_size)]
-            }
-            constraints = [f"weight_limit: {sum(resources['weights']) // 2}", f"min_value: {sum(resources['values']) // 3}"]
-        
-        elif problem_type == "Portfolio Optimization":
-            resources = {
-                "items": [f"stock_{i}" for i in range(problem_size)],
-                "returns": [random.uniform(0.05, 0.15) for _ in range(problem_size)],
-                "risks": [random.uniform(0.02, 0.12) for _ in range(problem_size)]
-            }
-            constraints = [f"max_risk: {sum(resources['risks']) / 2}", f"min_return: {sum(resources['returns']) / 3}"]
-        
-        elif problem_type == "Traveling Salesman":
-            resources = {
-                "cities": [f"city_{i}" for i in range(problem_size)],
-                "distances": [[random.randint(10, 100) for _ in range(problem_size)] for _ in range(problem_size)]
-            }
-            constraints = ["complete_tour: true", "visit_each_city_once: true"]
-        
-        else:  # Scheduling
-            resources = {
-                "tasks": [f"task_{i}" for i in range(problem_size)],
-                "durations": [random.randint(1, 10) for _ in range(problem_size)],
-                "deadlines": [random.randint(5, 20) for _ in range(problem_size)]
-            }
-            constraints = ["no_overlap: true", f"max_completion_time: {sum(resources['durations'])}"]
-        
-        with st.spinner("Running quantum optimization..."):
-            start_time = time.time()
-            
-            if asyncio.get_event_loop().is_running():
-                # We're already in an async context
-                optimization_result = st.session_state.agent.quantum_processor.quantum_optimization(
-                    resources, constraints[:constraint_count]
-                )
-            else:
-                # Create a new event loop
-                optimization_result = asyncio.run(
-                    run_async(lambda: st.session_state.agent.quantum_processor.quantum_optimization(
-                        resources, constraints[:constraint_count]
-                    ))
-                )
-            
-            total_time = time.time() - start_time
-        
-        # Display results
-        if optimization_result["success"]:
-            # Display optimization metrics
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.metric("Computation Time", f"{optimization_result['execution_time']:.4f}s")
-            
-            with col2:
-                if optimization_result.get("quantum_advantage", False):
-                    st.metric("Method", "Quantum Algorithm", delta="Faster")
-                else:
-                    st.metric("Method", "Classical Algorithm")
-            
-            with col3:
-                if "speedup" in optimization_result:
-                    st.metric("Quantum Speedup", f"{optimization_result['speedup']:.2f}x")
-            
-            # Display problem and solution
-            st.markdown("### Optimization Results")
-            
-            # Problem description
-            st.markdown("#### Problem")
-            problem_json = json.dumps(optimization_result["problem"], indent=2)
-            st.code(problem_json, language="json")
-            
-            # Solution
-            st.markdown("#### Solution")
-            solution_json = json.dumps(optimization_result["solution"], indent=2)
-            st.code(solution_json, language="json")
-            
-            # Visualization placeholder
-            st.markdown("#### Visualization")
-            st.info("Visualization would be displayed here based on the problem type")
-            
-        else:
-            st.error(f"Error in optimization: {optimization_result.get('error', 'Unknown error')}")
-
-
-def display_about_tab():
-    """Display the about tab with information about the agent"""
-    st.markdown('<h2 class="sub-header">About Q3A: Quantum-Accelerated AI Agent</h2>', unsafe_allow_html=True)
-    
-    # Introduction
-    st.markdown("""
-    <div class="quantum-card">
-        <h3>Quantum-Accelerated Intelligence</h3>
-        <p>Q3A (Quantum-Accelerated AI Agent) is a cutting-edge platform that combines the power of quantum computing with advanced AI to solve complex problems more efficiently.</p>
-        
-        <p>This platform demonstrates practical applications of quantum algorithms and shows how they can provide advantages over classical computing for specific tasks.</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Key features
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("""
-        <div class="quantum-card">
-            <h3>Quantum Capabilities</h3>
-            <ul>
-                <li><strong>Shor's Algorithm</strong>: Accelerated integer factorization</li>
-                <li><strong>Grover's Algorithm</strong>: Faster search in unsorted data</li>
-                <li><strong>QAOA</strong>: Quantum Approximate Optimization Algorithm</li>
-                <li><strong>QML</strong>: Quantum Machine Learning techniques</li>
-            </ul>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown("""
-        <div class="quantum-card">
-            <h3>AI Capabilities</h3>
-            <ul>
-                <li><strong>Natural Language Processing</strong>: Understanding and generating human language</li>
-                <li><strong>Task Classification</strong>: Identifying when quantum acceleration is beneficial</li>
-                <li><strong>Contextual Explanations</strong>: Explaining quantum advantages</li>
-                <li><strong>Hybrid Processing</strong>: Combining classical and quantum approaches</li>
-            </ul>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Technology stack
-    st.markdown("""
-    <div class="quantum-card">
-        <h3>Technology Stack</h3>
-        <p>Q3A is built on a modern technology stack that enables seamless integration between quantum computing and AI:</p>
-        
-        <div style="display: flex; flex-wrap: wrap; justify-content: space-between;">
-            <div style="flex: 1; min-width: 200px; margin: 10px;">
-                <h4>Quantum Computing</h4>
-                <ul>
-                    <li>PennyLane quantum framework</li>
-                    <li>Azure Quantum cloud service</li>
-                    <li>IonQ Aria-1 quantum hardware</li>
-                    <li>Qiskit integration</li>
-                </ul>
-            </div>
-            
-            <div style="flex: 1; min-width: 200px; margin: 10px;">
-                <h4>AI Models</h4>
-                <ul>
-                    <li>Claude 3.7 Sonnet</li>
-                    <li>GPT-4o (fallback)</li>
-                    <li>Task-specific ML models</li>
-                    <li>Hybrid quantum-classical models</li>
-                </ul>
-            </div>
-            
-            <div style="flex: 1; min-width: 200px; margin: 10px;">
-                <h4>Infrastructure</h4>
-                <ul>
-                    <li>Streamlit web interface</li>
-                    <li>Python backend</li>
-                    <li>PostgreSQL database</li>
-                    <li>Cloud deployment</li>
-                </ul>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Use cases
-    st.markdown("""
-    <div class="quantum-card">
-        <h3>Practical Applications</h3>
-        <p>Quantum-accelerated AI has numerous practical applications across various domains:</p>
-        
-        <ul>
-            <li><strong>Cryptography</strong>: Breaking encryption and creating quantum-resistant security</li>
-            <li><strong>Drug Discovery</strong>: Simulating molecular interactions for pharmaceutical research</li>
-            <li><strong>Financial Modeling</strong>: Optimizing portfolios and risk management</li>
-            <li><strong>Logistics</strong>: Solving complex routing and scheduling problems</li>
-            <li><strong>Materials Science</strong>: Designing new materials with specific properties</li>
-        </ul>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Credits and documentation
-    st.markdown("""
-    <div class="quantum-card">
-        <h3>Credits & Resources</h3>
-        <p>Q3A was developed by a team of researchers and developers with expertise in quantum computing and artificial intelligence.</p>
-        
-        <p>For more information, check out these resources:</p>
-        <ul>
-            <li><a href="https://azure.microsoft.com/en-us/products/quantum">Azure Quantum</a></li>
-            <li><a href="https://pennylane.ai/">PennyLane</a></li>
-            <li><a href="https://www.anthropic.com/">Anthropic Claude</a></li>
-            <li><a href="https://streamlit.io/">Streamlit</a></li>
-        </ul>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Footer
-    st.markdown("""
-    <footer>
-        <p>Q3A: Quantum-Accelerated AI Agent | Version 1.0.0 | © 2025</p>
-    </footer>
-    """, unsafe_allow_html=True)
-
-
-def main():
-    """Main application function"""
-    # Set up page styling
-    setup_page()
-    
-    # Initialize session state
-    init_streamlit_session()
-    
-    # Main header
-    st.markdown('<h1 class="main-header">Q3A: Quantum-Accelerated AI</h1>', unsafe_allow_html=True)
-    
-    # Sidebar
-    with st.sidebar:
-        st.image("https://upload.wikimedia.org/wikipedia/commons/f/f5/Quantum_circuit_symbol.svg", width=150)
-        st.markdown("### Q3A Agent Controls")
-        
-        # Quantum settings
-        use_real_hardware = st.checkbox(
-            "Use Real Quantum Hardware", 
-            value=st.session_state.api_configured["azure_quantum"],
-            disabled=not st.session_state.api_configured["azure_quantum"]
-        )
-        
-        if not st.session_state.api_configured["azure_quantum"] and use_real_hardware:
-            st.warning("Configure Azure Quantum to use real hardware")
-        
-        # Number of qubits
-        n_qubits = st.slider("Available Qubits", min_value=4, max_value=32, value=8)
-        
-        # API configuration
-        render_api_configuration()
-        
-        # Show agent status
-        display_agent_status()
-    
-    # Main content
-    tabs = st.tabs(["Chat", "Search", "Factorization", "Optimization", "About"])
-    
-    with tabs[0]:
-        display_chat_tab()
-    
-    with tabs[1]:
-        display_search_tab()
-    
-    with tabs[2]:
-        display_factorization_tab()
-    
-    with tabs[3]:
-        display_optimization_tab()
-    
-    with tabs[4]:
-        display_about_tab()
-
-
+# Entry point
 if __name__ == "__main__":
     main()
