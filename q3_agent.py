@@ -1251,8 +1251,21 @@ def render_api_configuration():
             os.environ["OPENAI_API_KEY"] = openai_key
             st.session_state.api_configured["openai"] = True
         
-        # Azure Quantum configuration
+        # Azure Quantum configuration with visual indicators
         st.markdown("### Azure Quantum Configuration")
+        st.info("🔶 All fields required for Azure Quantum hardware access")
+        
+        # Status indicator for Azure Quantum
+        azure_configured = all([
+            os.environ.get("AZURE_QUANTUM_SUBSCRIPTION_ID"),
+            os.environ.get("AZURE_QUANTUM_RESOURCE_GROUP"),
+            os.environ.get("AZURE_QUANTUM_WORKSPACE_NAME"),
+            os.environ.get("AZURE_QUANTUM_LOCATION")
+        ])
+        
+        status_color = "green" if azure_configured else "red"
+        status_text = "✅ Configured" if azure_configured else "❌ Not Configured"
+        st.markdown(f"**Status**: <span style='color:{status_color};'>{status_text}</span>", unsafe_allow_html=True)
         
         azure_subscription = st.text_input(
             "Azure Subscription ID",
@@ -1294,16 +1307,25 @@ def render_api_configuration():
         if all([azure_subscription, azure_resource_group, azure_workspace, azure_location]):
             st.session_state.api_configured["azure_quantum"] = True
         
-        # Apply configuration button
-        if st.button("Apply Configuration"):
+        # Apply configuration button with visual enhancement
+        if st.button("🚀 Apply Configuration & Connect to Azure Quantum"):
             # Reinitialize the agent
-            st.session_state.agent = Q3Agent()
-            st.success("Configuration applied and agent reinitialized!")
+            with st.spinner("Connecting to Azure Quantum..."):
+                try:
+                    st.session_state.agent = Q3Agent()
+                    device_type = st.session_state.agent.quantum_core.device_type
+                    
+                    if "ionq" in device_type:
+                        st.success(f"Successfully connected to Azure Quantum using {device_type}!")
+                    else:
+                        st.warning(f"Connected, but using {device_type}. Check credentials and try again.")
+                except Exception as e:
+                    st.error(f"Error connecting to Azure Quantum: {str(e)}")
             st.rerun()
 
 def render_agent_info():
     """Render agent information in the sidebar"""
-    with st.sidebar.expander("Agent Status", expanded=False):
+    with st.sidebar.expander("Agent Status", expanded=True):
         agent_status = st.session_state.agent.get_status()
         
         # Display quantum capabilities
@@ -1313,18 +1335,29 @@ def render_agent_info():
         quantum_status = "✅ Active" if quantum_cap["quantum_available"] else "❌ Unavailable"
         st.markdown(f"**Quantum Processing**: {quantum_status}")
         
-        azure_status = "✅ Connected" if quantum_cap.get("azure_quantum", False) else "❌ Using Local Simulation"
-        st.markdown(f"**Azure Quantum**: {azure_status}")
+        # Check Azure Quantum status
+        is_azure_connected = quantum_cap.get("azure_quantum", False)
+        azure_status = "✅ Connected" if is_azure_connected else "❌ Using Local Simulation"
+        azure_status_color = "green" if is_azure_connected else "red"
+        st.markdown(f"**Azure Quantum**: <span style='color:{azure_status_color};'>{azure_status}</span>", unsafe_allow_html=True)
         
+        # Display device type with color coding
         device = quantum_cap.get("device_type", "none")
         device_display = {
             "local.simulator": "Local Simulator",
-            "ionq.simulator": "IonQ Simulator",
-            "ionq.aria-1": "IonQ Aria-1 Hardware"
+            "ionq.simulator": "IonQ Simulator (Azure)",
+            "ionq.aria-1": "IonQ Aria-1 Hardware (Azure)"
         }.get(device, device)
         
-        st.markdown(f"**Quantum Device**: {device_display}")
+        device_color = "green" if "Hardware" in device_display else ("blue" if "Azure" in device_display else "orange")
+        st.markdown(f"**Quantum Device**: <span style='color:{device_color};'>{device_display}</span>", unsafe_allow_html=True)
         st.markdown(f"**Available Qubits**: {quantum_cap.get('qubits', 0)}")
+        
+        # Add a refresh button for quantum connection
+        if st.button("Refresh Quantum Connection"):
+            st.session_state.agent.quantum_core._initialize_quantum_device()
+            st.success("Quantum connection refreshed!")
+            st.rerun()
         
         # Display metrics
         metrics = quantum_cap.get("metrics", {})
