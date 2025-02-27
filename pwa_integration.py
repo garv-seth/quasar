@@ -8,20 +8,65 @@ enabling offline access, notifications, and installations.
 import os
 import json
 import base64
+import logging
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 
-import streamlit as st
-from streamlit.components.v1 import html
+# Use import with try/except to handle LSP issues
+try:
+    import streamlit as st
+    from streamlit.components.v1 import html
+except ImportError:
+    pass  # This will be handled at runtime
+
+# Import static file server
+from static_file_server import start_server_thread
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, 
+                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger('pwa-integration')
+
+def start_static_server(port=8765) -> Tuple[threading.Thread, int]:
+    """Start the static file server for PWA files if not already running
+    
+    Args:
+        port: Port to start the server on
+        
+    Returns:
+        Tuple of (server_thread, actual_port)
+    """
+    if 'static_server' not in st.session_state:
+        logger.info(f"Starting static file server on port {port}")
+        server_thread, actual_port = start_server_thread(port)
+        
+        if server_thread and actual_port:
+            st.session_state.static_server = {
+                'thread': server_thread,
+                'port': actual_port
+            }
+            logger.info(f"Static file server started on port {actual_port}")
+            return server_thread, actual_port
+        else:
+            logger.error("Failed to start static file server")
+            return None, None
+    else:
+        return st.session_state.static_server['thread'], st.session_state.static_server['port']
 
 def initialize_pwa():
     """Initialize PWA components for Streamlit"""
+    # Start the static file server if not already running
+    server_thread, actual_port = start_static_server()
+    
+    # Use the actual port in the URLs
+    base_url = f"http://localhost:{actual_port}"
+    
     # Add service worker registration and PWA scripts to the head
-    manifest_link = '<link rel="manifest" href="/manifest.json">'
+    manifest_link = f'<link rel="manifest" href="{base_url}/manifest.json">'
     theme_color = '<meta name="theme-color" content="#7B2FFF">'
     apple_meta = '<meta name="apple-mobile-web-app-capable" content="yes">'
-    apple_icon = '<link rel="apple-touch-icon" href="/icon-192.png">'
-    pwa_script = '<script src="/pwa.js" defer></script>'
+    apple_icon = f'<link rel="apple-touch-icon" href="{base_url}/icon-192.png">'
+    pwa_script = f'<script src="{base_url}/pwa.js" defer></script>'
     
     # Combine all head elements
     head_html = f"""

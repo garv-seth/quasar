@@ -7,6 +7,7 @@ such as service worker, manifest, and icons. It runs alongside the Streamlit app
 
 import os
 import threading
+import queue
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 import logging
 import time
@@ -49,25 +50,69 @@ class StaticFileHandler(SimpleHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
 
-def run_server(port=8000, bind="0.0.0.0"):
+def run_server(port=8765, bind="0.0.0.0"):
     """Run the static file server on the specified port"""
-    server_address = (bind, port)
-    httpd = HTTPServer(server_address, StaticFileHandler)
-    logger.info(f"Starting static file server on http://{bind}:{port}")
+    # Try to find an available port, starting with the specified one
+    max_attempts = 5
+    httpd = None
     
-    try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        logger.info("Static file server stopped")
-    finally:
-        httpd.server_close()
+    for attempt in range(max_attempts):
+        try:
+            server_address = (bind, port)
+            httpd = HTTPServer(server_address, StaticFileHandler)
+            logger.info(f"Starting static file server on http://{bind}:{port}")
+            break
+        except OSError as e:
+            if e.errno == 98:  # Address already in use
+                logger.warning(f"Port {port} is already in use, trying port {port + 1}")
+                port += 1
+                if attempt == max_attempts - 1:
+                    logger.error(f"Could not find an available port after {max_attempts} attempts")
+                    raise
+            else:
+                raise
+    
+    if httpd:
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            logger.info("Static file server stopped")
+        finally:
+            httpd.server_close()
+    else:
+        logger.error("Failed to initialize HTTP server")
+        return None
+    
+    return port
 
-def start_server_thread(port=8000):
+def start_server_thread(port=8765):
     """Start the server in a background thread"""
-    server_thread = threading.Thread(target=run_server, args=(port,), daemon=True)
+    # Use a queue to get the actual port used by the server
+    port_queue = queue.Queue()
+    
+    def run_with_queue():
+        try:
+            actual_port = run_server(port)
+            port_queue.put(actual_port)
+        except Exception as e:
+            logger.error(f"Error starting static file server: {e}")
+            port_queue.put(None)
+    
+    server_thread = threading.Thread(target=run_with_queue, daemon=True)
     server_thread.start()
-    logger.info(f"Static file server thread started on port {port}")
-    return server_thread
+    
+    # Wait for a short time to see if the server starts successfully
+    try:
+        actual_port = port_queue.get(timeout=3)
+        if actual_port:
+            logger.info(f"Static file server thread started successfully on port {actual_port}")
+            return server_thread, actual_port
+        else:
+            logger.error("Failed to start static file server")
+            return None, None
+    except queue.Empty:
+        logger.warning(f"Static file server thread started but no port confirmation received")
+        return server_thread, None
 
 if __name__ == "__main__":
     run_server()
