@@ -1,479 +1,548 @@
-// QUASAR Labs QA³ PWA Integration Script
+/**
+ * QUASAR QA³: PWA Implementation
+ * Provides Progressive Web App functionality for the Quantum-Accelerated AI Agent
+ */
 
-// PWA Configuration
-const PWA_CONFIG = {
-  serviceWorkerUrl: '/sw.js',
-  dbName: 'QUASAR-QA3-DB',
-  dbVersion: 1,
-  vapidPublicKey: 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U'
-};
-
-// Initialize PWA functionality
 class QUASARPwa {
   constructor() {
-    this.swRegistration = null;
-    this.isSubscribed = false;
+    this.deferredPrompt = null;
+    this.isInstalled = false;
+    this.notificationsEnabled = false;
     this.db = null;
-    
-    this.init();
+    this.initialized = false;
+
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => this.init());
+    } else {
+      this.init();
+    }
   }
-  
+
   async init() {
-    console.log('Initializing QUASAR QA³ PWA functionality...');
+    console.log('[PWA] Initializing QUASAR QA³ PWA...');
     
-    // Check if PWA is supported
-    if ('serviceWorker' in navigator) {
-      this.initializeServiceWorker();
-      this.initializeDatabase();
+    try {
+      await this.initializeServiceWorker();
+      await this.initializeDatabase();
       this.checkInstallState();
+      this.updateNotificationUI();
+      this.registerEventListeners();
       
-      // Set up install button if available
-      const installButton = document.getElementById('install-pwa');
-      if (installButton) {
-        installButton.addEventListener('click', () => this.installPwa());
-      }
+      this.initialized = true;
+      console.log('[PWA] Initialization complete');
       
-      // Set up notification button if available
-      const notifyButton = document.getElementById('enable-notifications');
-      if (notifyButton) {
-        notifyButton.addEventListener('click', () => this.toggleNotifications());
+      // Update Streamlit with the PWA status
+      this.sendPwaStatusToStreamlit();
+    } catch (error) {
+      console.error('[PWA] Initialization failed:', error);
+    }
+  }
+
+  async initializeServiceWorker() {
+    if ('serviceWorker' in navigator) {
+      try {
+        // If SERVICE_WORKER_URL is defined (from the streamlit component), use it
+        const swUrl = window.SERVICE_WORKER_URL || '/sw.js';
+        
+        const registration = await navigator.serviceWorker.register(swUrl, {
+          scope: '/'
+        });
+        console.log('[PWA] Service Worker registered with scope:', registration.scope);
+        
+        // Set up background sync for offline tasks if supported
+        if ('sync' in registration) {
+          console.log('[PWA] Background Sync supported');
+        }
+        
+        // Set up push notifications if supported
+        if ('pushManager' in registration) {
+          console.log('[PWA] Push API supported');
+          this.notificationsSupported = true;
+        }
+      } catch (error) {
+        console.error('[PWA] Service Worker registration failed:', error);
       }
     } else {
-      console.warn('Service workers are not supported in this browser');
-      this.updatePwaStatus('Service workers not supported');
+      console.warn('[PWA] Service Workers not supported');
+    }
+  }
+
+  async initializeDatabase() {
+    if (!('indexedDB' in window)) {
+      console.warn('[PWA] IndexedDB not supported');
+      return;
     }
     
-    // Send PWA status to Streamlit
-    this.sendPwaStatusToStreamlit();
-  }
-  
-  // Initialize service worker
-  async initializeServiceWorker() {
-    try {
-      this.swRegistration = await navigator.serviceWorker.register(PWA_CONFIG.serviceWorkerUrl);
-      console.log('Service Worker registered successfully:', this.swRegistration);
-      
-      // Check notification subscription status
-      this.updateSubscriptionStatus();
-      
-      // Listen for service worker state changes
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        console.log('Service Worker controller changed');
-      });
-      
-      // Send ready message to Streamlit once SW is active
-      if (navigator.serviceWorker.controller) {
-        this.updatePwaStatus('Service Worker active');
-      }
-    } catch (error) {
-      console.error('Service Worker registration failed:', error);
-      this.updatePwaStatus('Service Worker registration failed');
-    }
-  }
-  
-  // Initialize IndexedDB
-  async initializeDatabase() {
     try {
       this.db = await this.openDatabase();
-      console.log('Database initialized successfully');
+      console.log('[PWA] Database initialized');
     } catch (error) {
-      console.error('Database initialization failed:', error);
+      console.error('[PWA] Database initialization failed:', error);
     }
   }
   
-  // Open the database
   openDatabase() {
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open(PWA_CONFIG.dbName, PWA_CONFIG.dbVersion);
+      const request = indexedDB.open('quasar-qa3-db', 1);
       
-      request.onupgradeneeded = event => {
+      request.onupgradeneeded = (event) => {
         const db = event.target.result;
         
-        // Create task queue store for offline operations
-        if (!db.objectStoreNames.contains('taskQueue')) {
-          db.createObjectStore('taskQueue', { keyPath: 'id', autoIncrement: true });
+        // Create object stores
+        if (!db.objectStoreNames.contains('tasks')) {
+          const taskStore = db.createObjectStore('tasks', { keyPath: 'id', autoIncrement: true });
+          taskStore.createIndex('status', 'status', { unique: false });
+          taskStore.createIndex('timestamp', 'timestamp', { unique: false });
         }
         
-        // Create data cache store
-        if (!db.objectStoreNames.contains('dataCache')) {
-          db.createObjectStore('dataCache', { keyPath: 'key' });
-        }
-        
-        // Create settings store
         if (!db.objectStoreNames.contains('settings')) {
           db.createObjectStore('settings', { keyPath: 'key' });
         }
+        
+        if (!db.objectStoreNames.contains('cache')) {
+          db.createObjectStore('cache', { keyPath: 'key' });
+        }
       };
       
-      request.onsuccess = event => {
+      request.onsuccess = (event) => {
         resolve(event.target.result);
       };
       
-      request.onerror = event => {
-        console.error('IndexedDB error:', event.target.error);
+      request.onerror = (event) => {
+        console.error('[PWA] Database error:', event.target.error);
         reject(event.target.error);
       };
     });
   }
   
-  // Store a task for offline processing
   async storeTask(task) {
-    if (!this.db) await this.initializeDatabase();
-    
-    return new Promise((resolve, reject) => {
-      const tx = this.db.transaction('taskQueue', 'readwrite');
-      const store = tx.objectStore('taskQueue');
-      
-      const request = store.add({
-        task: task,
-        timestamp: new Date().toISOString()
-      });
-      
-      request.onsuccess = () => {
-        resolve(true);
-        
-        // Request background sync if supported
-        if ('serviceWorker' in navigator && 'SyncManager' in window) {
-          navigator.serviceWorker.ready.then(registration => {
-            registration.sync.register('quantum-task-sync')
-              .catch(err => console.error('Background sync registration failed:', err));
-          });
-        }
-      };
-      
-      request.onerror = () => {
-        console.error('Error storing task:', request.error);
-        reject(request.error);
-      };
-    });
-  }
-  
-  // Store data in cache
-  async storeData(key, data) {
-    if (!this.db) await this.initializeDatabase();
-    
-    return new Promise((resolve, reject) => {
-      const tx = this.db.transaction('dataCache', 'readwrite');
-      const store = tx.objectStore('dataCache');
-      
-      const request = store.put({
-        key: key,
-        data: data,
-        timestamp: new Date().toISOString()
-      });
-      
-      request.onsuccess = () => resolve(true);
-      request.onerror = () => reject(request.error);
-    });
-  }
-  
-  // Retrieve data from cache
-  async getData(key) {
-    if (!this.db) await this.initializeDatabase();
-    
-    return new Promise((resolve, reject) => {
-      const tx = this.db.transaction('dataCache', 'readonly');
-      const store = tx.objectStore('dataCache');
-      
-      const request = store.get(key);
-      
-      request.onsuccess = () => resolve(request.result ? request.result.data : null);
-      request.onerror = () => reject(request.error);
-    });
-  }
-  
-  // Store a setting
-  async storeSetting(key, value) {
-    if (!this.db) await this.initializeDatabase();
-    
-    return new Promise((resolve, reject) => {
-      const tx = this.db.transaction('settings', 'readwrite');
-      const store = tx.objectStore('settings');
-      
-      const request = store.put({
-        key: key,
-        value: value,
-        timestamp: new Date().toISOString()
-      });
-      
-      request.onsuccess = () => resolve(true);
-      request.onerror = () => reject(request.error);
-    });
-  }
-  
-  // Get a setting
-  async getSetting(key, defaultValue = null) {
-    if (!this.db) await this.initializeDatabase();
-    
-    return new Promise((resolve, reject) => {
-      const tx = this.db.transaction('settings', 'readonly');
-      const store = tx.objectStore('settings');
-      
-      const request = store.get(key);
-      
-      request.onsuccess = () => resolve(request.result ? request.result.value : defaultValue);
-      request.onerror = () => reject(request.error);
-    });
-  }
-  
-  // Check PWA install state
-  checkInstallState() {
-    // Check if using standalone mode (installed PWA)
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
-                         window.navigator.standalone ||
-                         document.referrer.includes('android-app://');
-    
-    if (isStandalone) {
-      console.log('PWA is running in standalone mode');
-      this.updatePwaStatus('PWA installed');
-      
-      // Store the information in Streamlit session
-      this.sendToStreamlit('pwa_installed', true);
-    } else {
-      console.log('PWA is running in browser mode');
-      
-      // Check if the app can be installed
-      window.addEventListener('beforeinstallprompt', (e) => {
-        // Prevent Chrome 67+ from automatically showing the prompt
-        e.preventDefault();
-        // Stash the event so it can be triggered later
-        this.deferredPrompt = e;
-        
-        // Show install button if available
-        const installButton = document.getElementById('install-pwa');
-        if (installButton) {
-          installButton.style.display = 'block';
-        }
-        
-        this.updatePwaStatus('PWA installable');
-      });
+    if (!this.db) {
+      console.error('[PWA] Database not initialized');
+      return false;
     }
     
-    // Listen for app installation
-    window.addEventListener('appinstalled', (evt) => {
-      console.log('QUASAR QA³ PWA was installed');
-      this.updatePwaStatus('PWA installed');
-      this.sendToStreamlit('pwa_installed', true);
+    try {
+      const transaction = this.db.transaction(['tasks'], 'readwrite');
+      const store = transaction.objectStore('tasks');
       
-      // Hide install button if available
-      const installButton = document.getElementById('install-pwa');
-      if (installButton) {
-        installButton.style.display = 'none';
+      // Add timestamp if not present
+      if (!task.timestamp) {
+        task.timestamp = new Date().toISOString();
       }
+      
+      const request = store.add(task);
+      
+      return new Promise((resolve, reject) => {
+        request.onsuccess = () => {
+          console.log('[PWA] Task stored successfully');
+          
+          // Request background sync if available
+          if ('serviceWorker' in navigator && 'SyncManager' in window) {
+            navigator.serviceWorker.ready.then(registration => {
+              registration.sync.register('sync-quantum-tasks');
+            });
+          }
+          
+          resolve(true);
+        };
+        
+        request.onerror = () => {
+          console.error('[PWA] Failed to store task');
+          reject(new Error('Failed to store task'));
+        };
+      });
+    } catch (error) {
+      console.error('[PWA] Error storing task:', error);
+      return false;
+    }
+  }
+  
+  async storeData(key, data) {
+    if (!this.db) return false;
+    
+    try {
+      const transaction = this.db.transaction(['cache'], 'readwrite');
+      const store = transaction.objectStore('cache');
+      
+      const item = {
+        key,
+        data,
+        timestamp: new Date().toISOString()
+      };
+      
+      const request = store.put(item);
+      
+      return new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(true);
+        request.onerror = () => reject(new Error('Failed to store data'));
+      });
+    } catch (error) {
+      console.error('[PWA] Error storing data:', error);
+      return false;
+    }
+  }
+  
+  async getData(key) {
+    if (!this.db) return null;
+    
+    try {
+      const transaction = this.db.transaction(['cache'], 'readonly');
+      const store = transaction.objectStore('cache');
+      
+      const request = store.get(key);
+      
+      return new Promise((resolve, reject) => {
+        request.onsuccess = () => {
+          resolve(request.result ? request.result.data : null);
+        };
+        
+        request.onerror = () => {
+          reject(new Error('Failed to retrieve data'));
+        };
+      });
+    } catch (error) {
+      console.error('[PWA] Error retrieving data:', error);
+      return null;
+    }
+  }
+  
+  async storeSetting(key, value) {
+    if (!this.db) return false;
+    
+    try {
+      const transaction = this.db.transaction(['settings'], 'readwrite');
+      const store = transaction.objectStore('settings');
+      
+      const item = {
+        key,
+        value,
+        timestamp: new Date().toISOString()
+      };
+      
+      const request = store.put(item);
+      
+      return new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(true);
+        request.onerror = () => reject(new Error('Failed to store setting'));
+      });
+    } catch (error) {
+      console.error('[PWA] Error storing setting:', error);
+      return false;
+    }
+  }
+  
+  async getSetting(key, defaultValue = null) {
+    if (!this.db) return defaultValue;
+    
+    try {
+      const transaction = this.db.transaction(['settings'], 'readonly');
+      const store = transaction.objectStore('settings');
+      
+      const request = store.get(key);
+      
+      return new Promise((resolve, reject) => {
+        request.onsuccess = () => {
+          resolve(request.result ? request.result.value : defaultValue);
+        };
+        
+        request.onerror = () => {
+          reject(new Error('Failed to retrieve setting'));
+        };
+      });
+    } catch (error) {
+      console.error('[PWA] Error retrieving setting:', error);
+      return defaultValue;
+    }
+  }
+  
+  registerEventListeners() {
+    // Listen for beforeinstallprompt event to handle PWA installation
+    window.addEventListener('beforeinstallprompt', (event) => {
+      // Prevent Chrome 67 and earlier from automatically showing the prompt
+      event.preventDefault();
+      // Stash the event so it can be triggered later
+      this.deferredPrompt = event;
+      
+      // Update the UI to show the install button
+      this.updatePwaStatus('installable', true);
+      
+      // Find and attach event listeners to all install buttons
+      document.querySelectorAll('#install-pwa, #install-pwa-card').forEach(button => {
+        if (button) {
+          button.style.display = 'inline-block';
+          button.addEventListener('click', () => this.installPwa());
+        }
+      });
+    });
+    
+    // Track when the PWA is successfully installed
+    window.addEventListener('appinstalled', () => {
+      console.log('[PWA] Application installed');
+      this.isInstalled = true;
+      this.deferredPrompt = null;
+      
+      // Update settings
+      this.storeSetting('installed', true);
+      this.updatePwaStatus('installed', true);
+      
+      // Hide install buttons
+      document.querySelectorAll('#install-pwa, #install-pwa-card').forEach(button => {
+        if (button) button.style.display = 'none';
+      });
+    });
+    
+    // Set up notification toggle buttons
+    document.querySelectorAll('#enable-notifications').forEach(button => {
+      if (button) {
+        button.addEventListener('click', () => this.toggleNotifications());
+      }
+    });
+    
+    // Listen for online/offline events
+    window.addEventListener('online', () => {
+      console.log('[PWA] Application is online');
+      this.updatePwaStatus('online', true);
+      
+      // Attempt to sync pending tasks
+      if ('serviceWorker' in navigator && 'SyncManager' in window) {
+        navigator.serviceWorker.ready.then(registration => {
+          registration.sync.register('sync-quantum-tasks');
+        });
+      }
+    });
+    
+    window.addEventListener('offline', () => {
+      console.log('[PWA] Application is offline');
+      this.updatePwaStatus('online', false);
     });
   }
   
-  // Try to install the PWA
+  checkInstallState() {
+    // Check if running as a PWA
+    if (window.matchMedia('(display-mode: standalone)').matches || 
+        window.navigator.standalone === true) {
+      this.isInstalled = true;
+      this.storeSetting('installed', true);
+      this.updatePwaStatus('installed', true);
+      console.log('[PWA] Running in standalone/installed mode');
+      
+      // Hide install buttons
+      document.querySelectorAll('#install-pwa, #install-pwa-card').forEach(button => {
+        if (button) button.style.display = 'none';
+      });
+    } else {
+      // Update from stored settings
+      this.getSetting('installed', false).then(installed => {
+        this.isInstalled = installed;
+        this.updatePwaStatus('installed', installed);
+      });
+    }
+  }
+
   async installPwa() {
     if (!this.deferredPrompt) {
-      console.log('No installation prompt available');
+      console.log('[PWA] No installation prompt available');
       return;
     }
     
     // Show the installation prompt
     this.deferredPrompt.prompt();
     
-    // Wait for the user to respond
-    const choiceResult = await this.deferredPrompt.userChoice;
+    // Wait for the user to respond to the prompt
+    const { outcome } = await this.deferredPrompt.userChoice;
+    console.log(`[PWA] User response to installation prompt: ${outcome}`);
     
-    if (choiceResult.outcome === 'accepted') {
-      console.log('User accepted the PWA installation');
-    } else {
-      console.log('User declined the PWA installation');
-    }
-    
-    // Clear the deferred prompt
+    // Clear the saved prompt
     this.deferredPrompt = null;
   }
   
-  // Update notification subscription status
   async updateSubscriptionStatus() {
-    if (!this.swRegistration) return;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      console.warn('[PWA] Push notifications not supported');
+      this.notificationsSupported = false;
+      return;
+    }
     
     try {
-      const subscription = await this.swRegistration.pushManager.getSubscription();
-      this.isSubscribed = !(subscription === null);
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
       
-      console.log('User is ' + (this.isSubscribed ? 'subscribed' : 'not subscribed') + ' to notifications');
+      this.notificationsEnabled = !!subscription;
+      this.updatePwaStatus('notifications_enabled', this.notificationsEnabled);
       
-      // Update UI
+      // Update settings
+      this.storeSetting('notifications_enabled', this.notificationsEnabled);
+      
       this.updateNotificationUI();
-      
-      // Save to settings
-      if (this.isSubscribed) {
-        this.storeSetting('notificationsEnabled', true);
-        this.sendToStreamlit('notifications_enabled', true);
-      } else {
-        this.storeSetting('notificationsEnabled', false);
-        this.sendToStreamlit('notifications_enabled', false);
-      }
-    } catch (err) {
-      console.error('Error checking subscription:', err);
+    } catch (error) {
+      console.error('[PWA] Error checking notification status:', error);
     }
   }
   
-  // Update notification button state
   updateNotificationUI() {
-    const notifyButton = document.getElementById('enable-notifications');
-    if (!notifyButton) return;
-    
-    if (Notification.permission === 'denied') {
-      notifyButton.textContent = 'Notifications Blocked';
-      notifyButton.disabled = true;
-      return;
-    }
-    
-    if (this.isSubscribed) {
-      notifyButton.textContent = 'Disable Notifications';
-    } else {
-      notifyButton.textContent = 'Enable Notifications';
-    }
-    
-    notifyButton.disabled = false;
+    // Update notification toggle buttons
+    document.querySelectorAll('#enable-notifications').forEach(button => {
+      if (!button) return;
+      
+      if (this.notificationsEnabled) {
+        button.textContent = 'Disable Notifications';
+        button.classList.add('enabled');
+      } else {
+        button.textContent = 'Enable Notifications';
+        button.classList.remove('enabled');
+      }
+    });
   }
   
-  // Toggle notifications subscription
   async toggleNotifications() {
-    if (!this.swRegistration) {
-      console.warn('Service Worker not registered');
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      console.warn('[PWA] Push notifications not supported');
       return;
     }
     
-    if (this.isSubscribed) {
-      try {
-        const subscription = await this.swRegistration.pushManager.getSubscription();
-        
-        if (subscription) {
-          await subscription.unsubscribe();
-          this.isSubscribed = false;
-          this.storeSetting('notificationsEnabled', false);
-          this.sendToStreamlit('notifications_enabled', false);
-          console.log('User unsubscribed from notifications');
-        }
-      } catch (err) {
-        console.error('Error unsubscribing:', err);
+    try {
+      // Request permission first
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        console.warn('[PWA] Notification permission denied');
+        return;
       }
-    } else {
-      try {
-        const applicationServerKey = this.urlB64ToUint8Array(PWA_CONFIG.vapidPublicKey);
-        const subscription = await this.swRegistration.pushManager.subscribe({
+      
+      const registration = await navigator.serviceWorker.ready;
+      const existingSubscription = await registration.pushManager.getSubscription();
+      
+      if (existingSubscription) {
+        // Unsubscribe
+        await existingSubscription.unsubscribe();
+        this.notificationsEnabled = false;
+      } else {
+        // Subscribe
+        // This would normally involve your server creating a subscription
+        // Here's a simplified version
+        const subscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: applicationServerKey
+          applicationServerKey: this.urlB64ToUint8Array(
+            // This is a placeholder public key - in a real implementation,
+            // this would come from your server
+            'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U'
+          )
         });
         
-        console.log('User subscribed to notifications:', subscription);
+        this.notificationsEnabled = true;
+        console.log('[PWA] Push notification subscription:', JSON.stringify(subscription));
         
-        // Send the subscription to the server
-        // await this.sendSubscriptionToServer(subscription);
-        
-        this.isSubscribed = true;
-        this.storeSetting('notificationsEnabled', true);
-        this.sendToStreamlit('notifications_enabled', true);
-      } catch (err) {
-        console.error('Failed to subscribe to notifications:', err);
-        if (Notification.permission === 'denied') {
-          console.warn('Notifications are blocked by the browser');
-        }
+        // In a real implementation, you would send the subscription to your server
+        // Here we'll simulate success
+        await this.sendTestNotification();
       }
+      
+      // Update settings and UI
+      this.storeSetting('notifications_enabled', this.notificationsEnabled);
+      this.updatePwaStatus('notifications_enabled', this.notificationsEnabled);
+      this.updateNotificationUI();
+    } catch (error) {
+      console.error('[PWA] Error toggling notifications:', error);
     }
-    
-    // Update UI
-    this.updateNotificationUI();
   }
   
-  // Send a notification
-  async sendNotification(title, options = {}) {
-    if (!this.swRegistration) {
-      console.warn('Service Worker not registered');
-      return false;
+  async sendTestNotification() {
+    // This simulates receiving a push notification for testing purposes
+    if (!('serviceWorker' in navigator)) {
+      console.warn('[PWA] Service workers not supported');
+      return;
     }
-    
-    // Check if subscribed
-    const subscribed = await this.getSetting('notificationsEnabled', false);
-    if (!subscribed) {
-      console.warn('User not subscribed to notifications');
-      return false;
-    }
-    
-    // Default options
-    const notificationOptions = {
-      body: options.body || 'New update from your quantum agent',
-      icon: options.icon || '/icon-192.png',
-      badge: '/badge.png',
-      vibrate: options.vibrate || [100, 50, 100],
-      data: {
-        url: options.url || '/',
-        timestamp: new Date().getTime()
-      },
-      actions: options.actions || [
-        { action: 'view', title: 'View' },
-        { action: 'dismiss', title: 'Dismiss' }
-      ]
-    };
     
     try {
-      await this.swRegistration.showNotification(title, notificationOptions);
-      return true;
-    } catch (err) {
-      console.error('Failed to show notification:', err);
-      return false;
+      const registration = await navigator.serviceWorker.ready;
+      
+      const title = 'QUASAR QA³ Notification';
+      const options = {
+        body: 'Notifications are now enabled for quantum task updates!',
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+        tag: 'test-notification',
+        actions: [
+          { action: 'view', title: 'View App' }
+        ],
+        data: {
+          url: '/'
+        }
+      };
+      
+      await registration.showNotification(title, options);
+    } catch (error) {
+      console.error('[PWA] Error sending test notification:', error);
     }
   }
   
-  // Send PWA status to Streamlit
   sendPwaStatusToStreamlit() {
-    // Check if Streamlit is available
-    if (typeof window.parent.postMessage !== 'function') return;
-    
-    // Gather status
-    const pwaStatus = {
-      serviceWorkerSupported: 'serviceWorker' in navigator,
-      serviceWorkerRegistered: !!this.swRegistration,
-      notificationsSupported: 'Notification' in window,
-      notificationsPermission: Notification.permission,
-      isStandalone: window.matchMedia('(display-mode: standalone)').matches ||
-                   window.navigator.standalone ||
-                   document.referrer.includes('android-app://'),
-      isOnline: navigator.onLine
+    // Send current status to Streamlit component
+    // This would normally be used by a Streamlit component to update the UI
+    const status = {
+      installed: this.isInstalled,
+      notifications_enabled: this.notificationsEnabled,
+      online: navigator.onLine,
+      supported: {
+        serviceWorker: 'serviceWorker' in navigator,
+        pushManager: 'PushManager' in window,
+        indexedDB: 'indexedDB' in window,
+        sync: 'SyncManager' in window,
+        notifications: 'Notification' in window
+      },
+      initialized: this.initialized
     };
     
-    // Send to Streamlit
-    this.sendToStreamlit('pwa_status', pwaStatus);
-  }
-  
-  // Update the PWA status display
-  updatePwaStatus(status) {
-    const statusElement = document.getElementById('pwa-status');
-    if (statusElement) {
-      statusElement.textContent = status;
+    // Update status display element if present
+    const statusEl = document.getElementById('pwa-status');
+    if (statusEl) {
+      statusEl.textContent = this.isInstalled 
+        ? '✓ Installed' 
+        : (this.deferredPrompt ? '⭐ Available to install' : '✗ Not installable');
     }
     
-    // Also send to Streamlit
-    this.sendToStreamlit('pwa_status_message', status);
+    try {
+      if (window.parent) {
+        // Send to Streamlit component
+        window.parent.postMessage({
+          type: 'streamlit:setComponentValue',
+          key: 'pwa_status',
+          value: status,
+          dataType: 'json'
+        }, '*');
+      }
+      
+      console.log('[PWA] Status sent to Streamlit:', status);
+    } catch (error) {
+      console.error('[PWA] Error sending status to Streamlit:', error);
+    }
   }
   
-  // Send data to Streamlit
+  updatePwaStatus(key, value) {
+    // Update a single status key and send to Streamlit
+    this.sendToStreamlit(key, value);
+  }
+  
   sendToStreamlit(key, value) {
     try {
-      // Check if Streamlit is available
-      if (typeof window.parent.postMessage !== 'function') return;
-      
-      // Send message to Streamlit
-      window.parent.postMessage({
-        type: 'streamlit:setComponentValue',
-        key: key,
-        value: value
-      }, '*');
-    } catch (err) {
-      console.error('Error sending data to Streamlit:', err);
+      if (window.parent) {
+        // Send to Streamlit component
+        window.parent.postMessage({
+          type: 'streamlit:setComponentValue',
+          key: key,
+          value: value
+        }, '*');
+      }
+    } catch (error) {
+      console.error('[PWA] Error sending to Streamlit:', error);
     }
   }
   
-  // Convert base64 to Uint8Array (for VAPID keys)
+  // Utility function to convert base64 to Uint8Array for web push
   urlB64ToUint8Array(base64String) {
     const padding = '='.repeat((4 - base64String.length % 4) % 4);
     const base64 = (base64String + padding)
-      .replace(/\-/g, '+')
+      .replace(/-/g, '+')
       .replace(/_/g, '/');
     
     const rawData = window.atob(base64);
@@ -487,41 +556,14 @@ class QUASARPwa {
   }
 }
 
-// Initialize the PWA functionality
-window.quasarPwa = new QUASARPwa();
+// Initialize the PWA when the script loads
+const quasarPwa = new QUASARPwa();
 
-// Helper function to check if app is running in PWA mode
+// Make the instance available globally
+window.quasarPwa = quasarPwa;
+
+// Helper function to check if we're in PWA mode
 function isPwaMode() {
-  return window.matchMedia('(display-mode: standalone)').matches ||
-         window.navigator.standalone ||
-         document.referrer.includes('android-app://');
+  return window.matchMedia('(display-mode: standalone)').matches || 
+         window.navigator.standalone === true;
 }
-
-// Add event listener for online/offline status
-window.addEventListener('online', () => {
-  console.log('Application is online');
-  document.body.classList.remove('offline');
-  
-  // Notify Streamlit
-  if (window.quasarPwa) {
-    window.quasarPwa.sendToStreamlit('is_online', true);
-  }
-  
-  // Try to sync pending tasks
-  if ('serviceWorker' in navigator && 'SyncManager' in window) {
-    navigator.serviceWorker.ready.then(registration => {
-      registration.sync.register('quantum-task-sync')
-        .catch(err => console.error('Background sync registration failed:', err));
-    });
-  }
-});
-
-window.addEventListener('offline', () => {
-  console.log('Application is offline');
-  document.body.classList.add('offline');
-  
-  // Notify Streamlit
-  if (window.quasarPwa) {
-    window.quasarPwa.sendToStreamlit('is_online', false);
-  }
-});

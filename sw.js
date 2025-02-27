@@ -1,321 +1,189 @@
 // QUASAR QA³ Service Worker
 
-// Cache version - update when files change
-const CACHE_VERSION = 'quasar-qa3-v1';
-const DYNAMIC_CACHE = 'quasar-dynamic-v1';
+const CACHE_NAME = 'quasar-qa3-cache-v1';
+const RUNTIME_CACHE = 'quasar-qa3-runtime-v1';
 
-// Files to cache
-const STATIC_CACHE_URLS = [
+// Resources to pre-cache
+const PRECACHE_URLS = [
   '/',
   '/offline.html',
   '/icon-192.png',
   '/icon-512.png',
-  '/pwa.js',
-  '/manifest.json'
+  '/manifest.json',
+  '/pwa.js'
 ];
 
-// IndexedDB helpers
-const idb = {
-  get dbPromise() {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open('QUASAR-QA3-DB', 1);
-      
-      request.onupgradeneeded = event => {
-        const db = event.target.result;
-        
-        // Create stores if they don't exist
-        if (!db.objectStoreNames.contains('taskQueue')) {
-          db.createObjectStore('taskQueue', { keyPath: 'id', autoIncrement: true });
-        }
-        
-        if (!db.objectStoreNames.contains('dataCache')) {
-          db.createObjectStore('dataCache', { keyPath: 'key' });
-        }
-        
-        if (!db.objectStoreNames.contains('settings')) {
-          db.createObjectStore('settings', { keyPath: 'key' });
-        }
-      };
-      
-      request.onsuccess = event => resolve(event.target.result);
-      request.onerror = event => reject(event.target.error);
-    });
-  },
-  
-  async add(storeName, item) {
-    const db = await this.dbPromise;
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(storeName, 'readwrite');
-      const store = tx.objectStore(storeName);
-      const request = store.add(item);
-      
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-      tx.oncomplete = () => db.close();
-    });
-  },
-  
-  async get(storeName, key) {
-    const db = await this.dbPromise;
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(storeName, 'readonly');
-      const store = tx.objectStore(storeName);
-      const request = store.get(key);
-      
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-      tx.oncomplete = () => db.close();
-    });
-  },
-  
-  async getAll(storeName) {
-    const db = await this.dbPromise;
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(storeName, 'readonly');
-      const store = tx.objectStore(storeName);
-      const request = store.getAll();
-      
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-      tx.oncomplete = () => db.close();
-    });
-  },
-  
-  async delete(storeName, key) {
-    const db = await this.dbPromise;
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(storeName, 'readwrite');
-      const store = tx.objectStore(storeName);
-      const request = store.delete(key);
-      
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-      tx.oncomplete = () => db.close();
-    });
-  },
-  
-  async clear(storeName) {
-    const db = await this.dbPromise;
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(storeName, 'readwrite');
-      const store = tx.objectStore(storeName);
-      const request = store.clear();
-      
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-      tx.oncomplete = () => db.close();
-    });
-  }
-};
-
-// Install service worker
+// Lifecycle: Install
 self.addEventListener('install', event => {
   console.log('[Service Worker] Installing Service Worker...', event);
-  
-  // Skip waiting to make sure the new service worker activates immediately
-  self.skipWaiting();
-  
-  // Cache static assets
   event.waitUntil(
-    caches.open(CACHE_VERSION)
+    caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('[Service Worker] Precaching App Shell');
-        return cache.addAll(STATIC_CACHE_URLS);
+        console.log('[Service Worker] Pre-caching offline resources');
+        return cache.addAll(PRECACHE_URLS);
       })
-      .catch(error => {
-        console.error('[Service Worker] Precaching failed:', error);
+      .then(() => {
+        console.log('[Service Worker] Successfully installed and cached resources');
+        return self.skipWaiting();
       })
   );
 });
 
-// Activate service worker
+// Lifecycle: Activate
 self.addEventListener('activate', event => {
   console.log('[Service Worker] Activating Service Worker...', event);
   
   // Clean up old caches
   event.waitUntil(
-    caches.keys()
-      .then(keyList => {
-        return Promise.all(keyList.map(key => {
-          if (key !== CACHE_VERSION && key !== DYNAMIC_CACHE) {
-            console.log('[Service Worker] Removing old cache:', key);
-            return caches.delete(key);
-          }
-        }));
-      })
-  );
-  
-  // Take control of all clients immediately
-  return self.clients.claim();
-});
-
-// Intercept fetch requests
-self.addEventListener('fetch', event => {
-  // Skip cross-origin requests
-  if (!event.request.url.startsWith(self.location.origin)) {
-    return;
-  }
-  
-  // Skip non-GET requests
-  if (event.request.method !== 'GET') {
-    return;
-  }
-  
-  // Handle API requests differently
-  if (event.request.url.includes('/api/')) {
-    handleApiRequest(event);
-    return;
-  }
-  
-  // For normal navigation requests, use stale-while-revalidate strategy
-  event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        // Return cached response if available
-        if (response) {
-          // Fetch updated resource in the background
-          fetch(event.request)
-            .then(networkResponse => {
-              caches.open(CACHE_VERSION)
-                .then(cache => {
-                  cache.put(event.request, networkResponse.clone());
-                });
-            })
-            .catch(error => {
-              console.log('[Service Worker] Network request failed:', error);
-            });
-          
-          return response;
-        }
-        
-        // If not in cache, fetch from network
-        return fetch(event.request)
-          .then(networkResponse => {
-            // Cache the response for future use
-            caches.open(DYNAMIC_CACHE)
-              .then(cache => {
-                cache.put(event.request, networkResponse.clone());
-              });
-            
-            return networkResponse;
-          })
-          .catch(error => {
-            console.log('[Service Worker] Network request failed:', error);
-            
-            // For HTML navigation requests, return the offline page
-            if (event.request.headers.get('accept').includes('text/html')) {
-              return caches.match('/offline.html');
-            }
-            
-            // Otherwise, just fail
-            return new Response('Network error', {
-              status: 408,
-              headers: { 'Content-Type': 'text/plain' }
-            });
-          });
-      })
-  );
-});
-
-// Handle API requests
-function handleApiRequest(event) {
-  event.respondWith(
-    fetch(event.request)
-      .then(response => response)
-      .catch(error => {
-        console.log('[Service Worker] API request failed:', error);
-        
-        // Store offline request for later synchronization
-        return serializeRequest(event.request)
-          .then(serializedRequest => {
-            return idb.add('taskQueue', {
-              request: serializedRequest,
-              timestamp: new Date().toISOString()
-            }).then(() => {
-              // Register for background sync if supported
-              if ('SyncManager' in self) {
-                return self.registration.sync.register('quantum-task-sync');
-              }
-            }).then(() => {
-              // Return a basic response indicating offline storage
-              return new Response(JSON.stringify({
-                success: false,
-                offline: true,
-                message: 'Request stored for processing when online'
-              }), {
-                headers: { 'Content-Type': 'application/json' }
-              });
-            });
-          });
-      })
-  );
-}
-
-// Serialize a request for storage
-async function serializeRequest(request) {
-  const headers = {};
-  for (const [key, value] of request.headers.entries()) {
-    headers[key] = value;
-  }
-  
-  let body = null;
-  if (request.method !== 'GET' && request.method !== 'HEAD') {
-    body = await request.clone().text();
-  }
-  
-  return {
-    url: request.url,
-    method: request.method,
-    headers: headers,
-    body: body,
-    mode: request.mode,
-    credentials: request.credentials,
-    cache: request.cache,
-    redirect: request.redirect,
-    referrer: request.referrer
-  };
-}
-
-// Process background sync
-self.addEventListener('sync', event => {
-  console.log('[Service Worker] Background Sync:', event);
-  
-  if (event.tag === 'quantum-task-sync') {
-    event.waitUntil(
-      idb.getAll('taskQueue')
-        .then(tasks => {
-          return Promise.all(tasks.map(task => {
-            // Deserialize and send the request
-            const request = deserializeRequest(task.request);
-            return fetch(request)
-              .then(response => {
-                if (response.ok) {
-                  return idb.delete('taskQueue', task.id);
-                }
-                throw new Error('Failed to sync task');
-              })
-              .catch(error => {
-                console.error('[Service Worker] Sync failed:', error);
-                // Keep the task in the queue for next sync
-              });
-          }));
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.filter(cacheName => {
+          return cacheName !== CACHE_NAME && cacheName !== RUNTIME_CACHE;
+        }).map(cacheName => {
+          console.log('[Service Worker] Deleting old cache:', cacheName);
+          return caches.delete(cacheName);
         })
-    );
+      );
+    }).then(() => self.clients.claim())
+  );
+});
+
+// Fetch handler with network-first strategy for API requests and cache-first for assets
+self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+  
+  // For API requests, use network-first strategy
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(networkFirstStrategy(event.request));
+  } 
+  // For quantum calculation results, use network-first strategy
+  else if (url.pathname.includes('quantum') || url.pathname.includes('calculation')) {
+    event.respondWith(networkFirstStrategy(event.request));
+  }
+  // For main page and static assets, use cache-first strategy
+  else {
+    event.respondWith(cacheFirstStrategy(event.request));
   }
 });
 
-// Deserialize a request from storage
-function deserializeRequest(serialized) {
-  return new Request(serialized.url, {
-    method: serialized.method,
-    headers: serialized.headers,
-    body: serialized.body,
-    mode: serialized.mode,
-    credentials: serialized.credentials,
-    cache: serialized.cache,
-    redirect: serialized.redirect,
-    referrer: serialized.referrer
+// Cache-first strategy for static resources
+async function cacheFirstStrategy(request) {
+  const cachedResponse = await caches.match(request);
+  if (cachedResponse) {
+    return cachedResponse;
+  }
+  
+  try {
+    const networkResponse = await fetch(request);
+    // Cache successful responses for future use
+    if (networkResponse.ok) {
+      const cache = await caches.open(RUNTIME_CACHE);
+      cache.put(request, networkResponse.clone());
+    }
+    return networkResponse;
+  } catch (error) {
+    console.log('[Service Worker] Network request failed, serving offline page');
+    // If the request is for a page (HTML), serve the offline page
+    if (request.headers.get('Accept').includes('text/html')) {
+      return caches.match('/offline.html');
+    }
+    
+    // For other resources, simply return an error response
+    return new Response('Network error happened', {
+      status: 408,
+      headers: { 'Content-Type': 'text/plain' }
+    });
+  }
+}
+
+// Network-first strategy for API requests
+async function networkFirstStrategy(request) {
+  try {
+    // Try network first
+    const networkResponse = await fetch(request);
+    
+    // Cache successful responses
+    if (networkResponse.ok) {
+      const cache = await caches.open(RUNTIME_CACHE);
+      cache.put(request, networkResponse.clone());
+    }
+    
+    return networkResponse;
+  } catch (error) {
+    console.log('[Service Worker] Network request failed, checking cache');
+    
+    // Fall back to cache
+    const cachedResponse = await caches.match(request);
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+    
+    // If not in cache and for a page, serve the offline page
+    if (request.headers.get('Accept').includes('text/html')) {
+      return caches.match('/offline.html');
+    }
+    
+    // For API requests, return a JSON error
+    return new Response(JSON.stringify({
+      error: 'You are offline and this data is not cached.',
+      offline: true,
+      timestamp: new Date().toISOString()
+    }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+// Handle background sync
+self.addEventListener('sync', event => {
+  console.log('[Service Worker] Background Sync Event:', event.tag);
+  
+  if (event.tag === 'sync-quantum-tasks') {
+    event.waitUntil(syncQuantumTasks());
+  }
+});
+
+// Sync quantum tasks that were created offline
+async function syncQuantumTasks() {
+  // This would ideally get from IndexedDB
+  const tasksToSync = await getOfflineTasks();
+  
+  // Process each offline task
+  const syncPromises = tasksToSync.map(async task => {
+    try {
+      const response = await fetch('/api/quantum/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(task)
+      });
+      
+      if (response.ok) {
+        // Task synced successfully, remove from offline queue
+        await removeOfflineTask(task.id);
+      }
+      
+      return response.ok;
+    } catch (error) {
+      console.error('[Service Worker] Failed to sync task:', error);
+      return false;
+    }
   });
+  
+  // Wait for all sync operations to complete
+  return Promise.all(syncPromises);
+}
+
+// Simulate getting offline tasks (would use IndexedDB in a real implementation)
+async function getOfflineTasks() {
+  // Simulate IndexedDB read
+  return [];
+}
+
+// Simulate removing an offline task (would use IndexedDB in a real implementation)
+async function removeOfflineTask(taskId) {
+  // Simulate IndexedDB delete
+  return true;
 }
 
 // Handle push notifications
@@ -323,22 +191,22 @@ self.addEventListener('push', event => {
   console.log('[Service Worker] Push Received:', event);
   
   let notificationData = {
-    title: 'QUASAR QA³ Update',
-    body: 'Something new has happened!',
+    title: 'QA³ Notification',
+    body: 'Something happened in your QUASAR QA³ application.',
     icon: '/icon-192.png',
-    badge: '/badge.png',
-    actions: [
-      { action: 'view', title: 'View' },
-      { action: 'dismiss', title: 'Dismiss' }
-    ]
+    badge: '/icon-192.png',
+    data: {
+      url: '/'
+    }
   };
   
+  // Try to parse the data if available
   if (event.data) {
     try {
       const data = event.data.json();
       notificationData = { ...notificationData, ...data };
     } catch (e) {
-      notificationData.body = event.data.text();
+      console.error('Failed to parse push data:', e);
     }
   }
   
@@ -348,11 +216,7 @@ self.addEventListener('push', event => {
       icon: notificationData.icon,
       badge: notificationData.badge,
       vibrate: [100, 50, 100],
-      data: {
-        url: notificationData.url || '/',
-        timestamp: new Date().getTime()
-      },
-      actions: notificationData.actions
+      data: notificationData.data
     })
   );
 });
@@ -360,29 +224,23 @@ self.addEventListener('push', event => {
 // Handle notification clicks
 self.addEventListener('notificationclick', event => {
   console.log('[Service Worker] Notification click:', event);
-  
   event.notification.close();
   
-  if (event.action === 'dismiss') {
-    return;
-  }
-  
-  const url = event.notification.data.url || '/';
-  
-  event.waitUntil(
-    clients.matchAll({ type: 'window' })
-      .then(windowClients => {
-        // Check if already open and focus
-        for (const client of windowClients) {
-          if (client.url === url && 'focus' in client) {
+  // Open the target URL when the user clicks the notification
+  if (event.notification.data && event.notification.data.url) {
+    event.waitUntil(
+      clients.matchAll({ type: 'window' }).then(windowClients => {
+        // Check if there's already a window open that we can focus
+        for (let client of windowClients) {
+          if (client.url === event.notification.data.url && 'focus' in client) {
             return client.focus();
           }
         }
-        
-        // Otherwise open a new window
+        // Open a new window otherwise
         if (clients.openWindow) {
-          return clients.openWindow(url);
+          return clients.openWindow(event.notification.data.url);
         }
       })
-  );
+    );
+  }
 });

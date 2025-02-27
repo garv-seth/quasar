@@ -1369,6 +1369,15 @@ def main():
     # Initialize the session state
     initialize_session_state()
     
+    # Start the static file server for PWA assets
+    try:
+        import static_file_server
+        # Start server on port 8000 for static files
+        static_file_server.start_server_thread(8000)
+        logger.info("Static file server started on port 8000")
+    except Exception as e:
+        logger.error(f"Failed to start static file server: {str(e)}")
+    
     # Import PWA integration
     try:
         from pwa_integration import initialize_pwa, display_pwa_card, add_browser_integration

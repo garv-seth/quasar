@@ -109,3 +109,7 @@ args = "pip install selenium webdriver-manager"
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 8000
+externalPort = 8000

@@ -26,26 +26,79 @@ def initialize_pwa():
             "last_sync": None,
         }
     
-    # Create HTML for PWA components to inject
-    pwa_html = """
-    <link rel="manifest" href="/manifest.json">
+    # Static file server port
+    static_port = 8000
+    
+    # Create HTML for PWA components to inject - using the static file server
+    pwa_html = f"""
+    <link rel="manifest" href="http://localhost:{static_port}/manifest.json">
     <meta name="theme-color" content="#7B2FFF">
-    <link rel="apple-touch-icon" href="/icon-192.png">
-    <script src="/pwa.js" defer></script>
+    <link rel="apple-touch-icon" href="http://localhost:{static_port}/icon-192.png">
+    <script src="http://localhost:{static_port}/pwa.js" defer></script>
     <script>
         // Register event listener for messages from PWA script
-        window.addEventListener('message', function(event) {
-            if (event.data.type === 'pwa_status') {
+        window.addEventListener('message', function(event) {{
+            if (event.data.type === 'streamlit:setComponentValue') {{
                 // Pass PWA status to Streamlit
                 const data = event.data;
-                if (data.key && data.value) {
+                if (data.key && data.value) {{
                     // Handle PWA status updates
                     console.log("PWA Status:", data.key, data.value);
-                    // You can add code here to update Streamlit components
-                }
-            }
-        });
+                    
+                    // Send this data to Streamlit via the Streamlit component API
+                    if (window.parent && window.parent.postMessage) {{
+                        window.parent.postMessage({{
+                            type: "streamlit:setComponentValue",
+                            value: data.value,
+                            dataType: "json"
+                        }}, "*");
+                    }}
+                }}
+            }}
+        }});
+        
+        // Configure service worker URL
+        window.SERVICE_WORKER_URL = "http://localhost:{static_port}/sw.js";
+        
+        // Check offline status
+        function updateOnlineStatus() {{
+            console.log("Online status:", navigator.onLine);
+            const statusEl = document.getElementById('online-status');
+            if (statusEl) {{
+                statusEl.textContent = navigator.onLine ? "✓ Online" : "✗ Offline";
+                statusEl.className = navigator.onLine ? "online-status online" : "online-status offline";
+            }}
+        }}
+        
+        window.addEventListener('online', updateOnlineStatus);
+        window.addEventListener('offline', updateOnlineStatus);
     </script>
+    <style>
+        .online-status {{
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-left: 10px;
+        }}
+        .online {{
+            background-color: #c2f5d0;
+            color: #0a3816;
+        }}
+        .offline {{
+            background-color: #f5c2c2;
+            color: #380a0a;
+        }}
+        #pwa-status {{
+            font-size: 14px;
+            margin-left: 10px;
+            color: #7B2FFF;
+        }}
+    </style>
+    <div style="display: flex; align-items: center; margin-bottom: 10px;">
+        <span id="online-status" class="online-status online">✓ Online</span>
+        <span id="pwa-status">Initializing...</span>
+    </div>
     """
     
     # Inject HTML
