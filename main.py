@@ -18,22 +18,27 @@ from typing import Dict, List, Any, Optional
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 
-# Import Enhanced Agent - fallback to standard agent if not available
-try:
-    from quantum_agent_framework.agents.enhanced_q3a_agent import EnhancedQ3AAgent
-    ENHANCED_AGENT_AVAILABLE = True
-except ImportError:
-    from ai_agent import Q3AAgent
-    ENHANCED_AGENT_AVAILABLE = False
-    logging.warning("Enhanced Q3A agent not available, using standard agent")
+# Import our core AI agent
+from ai_agent import Q3AAgent
 
-# Import API key management
-try:
-    from utils.api_keys import check_api_keys, set_api_key
-    API_KEYS_MODULE_AVAILABLE = True
-except ImportError:
-    API_KEYS_MODULE_AVAILABLE = False
-    logging.warning("API keys module not available")
+# Basic API key management
+def check_api_keys():
+    """Check if API keys are available in environment variables"""
+    keys = {
+        "openai": os.environ.get("OPENAI_API_KEY") is not None,
+        "azure_quantum": os.environ.get("AZURE_QUANTUM_WORKSPACE_NAME") is not None
+    }
+    return keys
+
+def set_api_key(service, key):
+    """Set an API key in environment variables"""
+    if service == "openai":
+        os.environ["OPENAI_API_KEY"] = key
+        return True
+    elif service == "azure_quantum":
+        os.environ["AZURE_QUANTUM_WORKSPACE_NAME"] = key
+        return True
+    return False
 
 # Page configuration
 st.set_page_config(
