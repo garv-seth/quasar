@@ -946,6 +946,7 @@ def main():
     # Navigation
     page = st.sidebar.radio("View", [
         "Agent Interface",
+        "Web Browsing",
         "Quantum Demo",
         "Task History",
         "Agent Settings",
@@ -955,6 +956,8 @@ def main():
     # Display the selected page
     if page == "Agent Interface":
         display_agent_interface()
+    elif page == "Web Browsing":
+        display_web_browsing()
     elif page == "Quantum Demo":
         display_quantum_demo()
     elif page == "Task History":
