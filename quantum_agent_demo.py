@@ -460,9 +460,9 @@ def display_agent_interface():
     # Display chat history
     for message in st.session_state.chat_history:
         if message["role"] == "user":
-            st.markdown(f"<div style='background-color: #f0f2f6; padding: 10px; border-radius: 10px; margin-bottom: 10px;'><strong>You:</strong> {message['content']}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background-color: #f0f2f6; color: #424242; padding: 10px; border-radius: 10px; margin-bottom: 10px;'><strong>You:</strong> {message['content']}</div>", unsafe_allow_html=True)
         else:
-            st.markdown(f"<div style='background-color: #e1f5fe; padding: 10px; border-radius: 10px; margin-bottom: 10px;'><strong>QA³ Agent:</strong> {message['content']}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background-color: #e1f5fe; color: #0d47a1; padding: 10px; border-radius: 10px; margin-bottom: 10px;'><strong>QA³ Agent:</strong> {message['content']}</div>", unsafe_allow_html=True)
     
     # Input for new message
     with st.form(key="chat_form"):
