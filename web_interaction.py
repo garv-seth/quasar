@@ -77,6 +77,19 @@ class WebAgent:
             self.error_message = f"Failed to initialize web agent: {str(e)}"
             logger.error(self.error_message)
     
+    def navigate(self, url: str) -> Dict[str, Any]:
+        """
+        Navigate to a URL (alias for visit)
+        
+        Args:
+            url: URL to navigate to
+            
+        Returns:
+            Dict with operation result
+        """
+        # This is an alias for visit to maintain compatibility with core_agent API
+        return self.visit(url)
+    
     def visit(self, url: str) -> Dict[str, Any]:
         """
         Visit a URL
