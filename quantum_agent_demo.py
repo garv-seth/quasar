@@ -51,6 +51,9 @@ def initialize_session_state():
     if 'agent_initialized' not in st.session_state:
         st.session_state.agent_initialized = False
         
+    if 'agent_running' not in st.session_state:
+        st.session_state.agent_running = False
+        
     if 'agent' not in st.session_state:
         st.session_state.agent = None
         
@@ -122,11 +125,18 @@ async def initialize_agent():
             use_quantum=st.session_state.use_quantum,
             n_qubits=st.session_state.n_qubits
         )
-        st.success("QA³ agent initialized successfully")
+        
+        # Start the agent loop to ensure it's running
+        asyncio.create_task(st.session_state.agent.start_agent_loop())
+        
+        # Set the agent status to initialized and running
+        st.session_state.agent_running = True
+        st.success("QA³ agent initialized and running")
         st.session_state.agent_initialized = True
         return True
     except Exception as e:
         st.error(f"Failed to initialize agent: {str(e)}")
+        st.session_state.agent_running = False
         return False
 
 async def process_task(task):
@@ -405,12 +415,27 @@ def display_agent_interface():
     if st.session_state.agent_initialized:
         status = st.session_state.agent.get_status()
         
+        # Verify if the agent running status is accurate
+        is_running = status.get('is_running', False)
+        if is_running != st.session_state.agent_running:
+            st.session_state.agent_running = is_running
+        
+        # Agent running banner
+        if st.session_state.agent_running:
+            st.success("🟢 Agent is running and ready to process tasks")
+        else:
+            st.warning("🟠 Agent is initialized but not running")
+            if st.button("Start Agent"):
+                asyncio.create_task(st.session_state.agent.start_agent_loop())
+                st.session_state.agent_running = True
+                st.rerun()
+        
         with st.expander("Agent Status", expanded=False):
             col1, col2 = st.columns(2)
             with col1:
                 st.markdown("**Agent Information**")
                 st.write(f"Agent Name: {status.get('agent_name', 'QA³ Agent')}")
-                st.write(f"Running: {status.get('is_running', False)}")
+                st.write(f"Running: {is_running}")
                 st.write(f"Startup Time: {status.get('startup_time', 'Unknown')}")
             
             with col2:
@@ -826,15 +851,25 @@ def main():
     # Sidebar
     st.sidebar.title("QA³ Navigation")
     
-    # Initialize button
+    # Agent status and initialization
     if not st.session_state.agent_initialized:
+        st.sidebar.warning("⚠️ Agent not initialized")
         if st.sidebar.button("Initialize Agent"):
             with st.spinner("Initializing agent..."):
                 success = asyncio.run(initialize_agent())
                 if success:
-                    st.sidebar.success("Agent initialized successfully!")
+                    st.sidebar.success("Agent initialized and running!")
                 else:
                     st.sidebar.error("Failed to initialize agent")
+    else:
+        if st.session_state.agent_running:
+            st.sidebar.success("🟢 Agent running")
+        else:
+            st.sidebar.warning("🟠 Agent initialized but not running")
+            if st.sidebar.button("Start Agent Loop"):
+                asyncio.create_task(st.session_state.agent.start_agent_loop())
+                st.session_state.agent_running = True
+                st.rerun()
     
     # Navigation
     page = st.sidebar.radio("View", [
