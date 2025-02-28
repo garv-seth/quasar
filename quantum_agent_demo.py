@@ -505,6 +505,78 @@ def display_task_history():
             st.markdown("**Quantum Information:**")
             st.markdown(f"- Quantum Enhanced: {result.get('quantum_enhanced', False)}")
 
+def display_web_browsing():
+    """Display web browsing interface with quantum-enhanced capabilities"""
+    st.subheader("Quantum-Enhanced Web Browsing")
+    
+    st.markdown("""
+    ### Web Navigation
+    
+    This interface demonstrates the agent's ability to browse the web with quantum-enhanced capabilities:
+    1. Quantum-enhanced search and relevance ranking
+    2. Web page analysis with quantum processing
+    3. Intelligent navigation with quantum decision making
+    """)
+    
+    # URL input
+    with st.form("web_navigation_form"):
+        url_input = st.text_input("Enter URL to visit:", placeholder="https://example.com")
+        browse_button = st.form_submit_button("Browse")
+        
+        if browse_button and url_input:
+            # Add to task history
+            task = f"Navigate to {url_input}"
+            st.session_state.chat_history.append({"role": "user", "content": task})
+            
+            with st.spinner(f"Navigating to {url_input}..."):
+                # Process the navigation task
+                try:
+                    if st.session_state.agent_initialized and st.session_state.agent_running:
+                        result = asyncio.run(st.session_state.agent.process_task(task))
+                        
+                        # Display result
+                        if result.get("success", False):
+                            # Add screenshot if available
+                            if "screenshot" in result.get("action_result", {}):
+                                st.image(f"data:image/png;base64,{result['action_result']['screenshot']}", 
+                                         caption=f"Screenshot of {url_input}")
+                            
+                            # Add response to chat history
+                            message = f"Successfully navigated to {url_input}"
+                            if "title" in result.get("action_result", {}):
+                                message += f"\nPage title: {result['action_result']['title']}"
+                            
+                            st.session_state.chat_history.append({"role": "assistant", "content": message})
+                        else:
+                            error = result.get("error", "Unknown error")
+                            st.error(f"Failed to navigate: {error}")
+                            st.session_state.chat_history.append({"role": "assistant", 
+                                                                 "content": f"Failed to navigate to {url_input}: {error}"})
+                    else:
+                        st.error("Agent is not initialized or running. Please start the agent first.")
+                except Exception as e:
+                    st.error(f"An error occurred: {str(e)}")
+    
+    # Display previous web interactions
+    with st.expander("Web Browsing History", expanded=False):
+        web_interactions = [task for task in st.session_state.task_history 
+                          if "navigate" in task.get("task", "").lower()]
+        
+        if not web_interactions:
+            st.info("No web browsing history yet.")
+        else:
+            for interaction in web_interactions:
+                st.markdown(f"**URL:** {interaction.get('task', '').replace('Navigate to ', '')}")
+                st.markdown(f"**Time:** {interaction.get('timestamp', 'Unknown')}")
+                
+                # Display screenshot if available
+                result = interaction.get("result", {})
+                action_result = result.get("action_result", {})
+                if "screenshot" in action_result:
+                    st.image(f"data:image/png;base64,{action_result['screenshot']}", 
+                             caption="Screenshot", width=400)
+                st.markdown("---")
+
 def display_quantum_demo():
     """Display quantum computing demonstration"""
     st.subheader("Quantum Computing Demonstration")
