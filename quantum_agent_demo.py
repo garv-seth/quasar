@@ -149,9 +149,46 @@ async def process_task(task):
     st.session_state.chat_history.append({"role": "user", "content": task})
     
     try:
-        # Process the task
-        with st.spinner("Agent processing task..."):
+        # Process the task with the agent
+        with st.spinner(f"Agent processing task: {task}"):
+            # Determine task type for specialized processing
+            task_type = "general"
+            if task.lower().startswith("navigate to ") or task.lower().startswith("browse to "):
+                task_type = "navigation"
+            elif task.lower().startswith("deep search:") or task.lower().startswith("search for "):
+                task_type = "search"
+            elif any(keyword in task.lower() for keyword in ["find", "browse", "look up", "check", "search", "visit"]):
+                task_type = "web_task"
+            
+            # Log the task type
+            logger.info(f"Processing task type: {task_type}")
+            
+            # Process the task
             result = await st.session_state.agent.process_task(task)
+            
+            # If the result has no summary, generate one based on task type
+            if "summary" not in result:
+                if result.get('success', False):
+                    if task_type == "navigation":
+                        url = task.replace("Navigate to ", "").replace("navigate to ", "").strip()
+                        result["summary"] = f"Successfully navigated to {url}"
+                        if "title" in result.get("action_result", {}):
+                            result["summary"] += f"\nPage title: {result['action_result']['title']}"
+                    elif task_type == "search":
+                        result["summary"] = f"I completed the search and found {len(result.get('search_results', []))} results."
+                        if "search_highlights" in result:
+                            result["summary"] += f"\n\nHighlights:\n{result['search_highlights']}"
+                    elif task_type == "web_task":
+                        action = result.get('decision', {}).get('description', 'process the web task')
+                        result["summary"] = f"I successfully completed the web task by taking the action: {action}.\n\n"
+                        if "extraction_results" in result:
+                            result["summary"] += f"\nInformation extracted:\n{result['extraction_results']}"
+                    else:
+                        result["summary"] = f"I successfully completed the task '{task}' by taking the action: {result.get('decision', {}).get('description', 'unknown action')}.\n\n"
+                        result["summary"] += f"This action was {'' if result.get('quantum_enhanced', False) else 'not '}quantum-enhanced."
+                else:
+                    error_info = result.get('action_result', {}).get('message', result.get('error', 'Unknown error'))
+                    result["summary"] = f"I was unable to complete the task '{task}'. The issue was: {error_info}"
         
         # Add result to task history
         st.session_state.task_history.append({
@@ -161,18 +198,13 @@ async def process_task(task):
         })
         
         # Add agent response to chat
-        response = f"Task complete: {result.get('success', False)}\n\n"
-        if result.get('success', False):
-            response += f"I successfully completed the task '{task}' by taking the action: {result.get('decision', {}).get('description', 'unknown action')}.\n\n"
-            response += f"This action was {'' if result.get('quantum_enhanced', False) else 'not '}quantum-enhanced."
-        else:
-            response += f"I was unable to complete the task '{task}'. The issue was: {result.get('action_result', {}).get('message', 'Unknown error')}."
-        
+        response = result.get("summary", f"Task complete: {result.get('success', False)}")
         st.session_state.chat_history.append({"role": "assistant", "content": response})
         
         return result
     except Exception as e:
         error_msg = f"Error processing task: {str(e)}"
+        logger.error(f"Exception in process_task: {str(e)}", exc_info=True)
         st.error(error_msg)
         st.session_state.chat_history.append({"role": "assistant", "content": f"Error: {error_msg}"})
         return {"success": False, "error": error_msg}
@@ -507,74 +539,221 @@ def display_task_history():
 
 def display_web_browsing():
     """Display web browsing interface with quantum-enhanced capabilities"""
-    st.subheader("Quantum-Enhanced Web Browsing")
+    st.subheader("Quantum-Enhanced Web Browsing & Deep Search")
     
     st.markdown("""
-    ### Web Navigation
+    ### Intelligent Web Interaction
     
     This interface demonstrates the agent's ability to browse the web with quantum-enhanced capabilities:
     1. Quantum-enhanced search and relevance ranking
     2. Web page analysis with quantum processing
     3. Intelligent navigation with quantum decision making
+    4. Deep search across multiple sources
+    5. Natural language task handling
     """)
     
-    # URL input
-    with st.form("web_navigation_form"):
-        url_input = st.text_input("Enter URL to visit:", placeholder="https://example.com")
-        browse_button = st.form_submit_button("Browse")
-        
-        if browse_button and url_input:
-            # Add to task history
-            task = f"Navigate to {url_input}"
-            st.session_state.chat_history.append({"role": "user", "content": task})
-            
-            with st.spinner(f"Navigating to {url_input}..."):
-                # Process the navigation task
-                try:
-                    if st.session_state.agent_initialized and st.session_state.agent_running:
-                        result = asyncio.run(st.session_state.agent.process_task(task))
-                        
-                        # Display result
-                        if result.get("success", False):
-                            # Add screenshot if available
-                            if "screenshot" in result.get("action_result", {}):
-                                st.image(f"data:image/png;base64,{result['action_result']['screenshot']}", 
-                                         caption=f"Screenshot of {url_input}")
-                            
-                            # Add response to chat history
-                            message = f"Successfully navigated to {url_input}"
-                            if "title" in result.get("action_result", {}):
-                                message += f"\nPage title: {result['action_result']['title']}"
-                            
-                            st.session_state.chat_history.append({"role": "assistant", "content": message})
-                        else:
-                            error = result.get("error", "Unknown error")
-                            st.error(f"Failed to navigate: {error}")
-                            st.session_state.chat_history.append({"role": "assistant", 
-                                                                 "content": f"Failed to navigate to {url_input}: {error}"})
-                    else:
-                        st.error("Agent is not initialized or running. Please start the agent first.")
-                except Exception as e:
-                    st.error(f"An error occurred: {str(e)}")
+    # Create tabs for different interaction modes
+    web_tabs = st.tabs(["Task-Based Browsing", "URL Navigation", "Deep Search", "Browser History"])
     
-    # Display previous web interactions
-    with st.expander("Web Browsing History", expanded=False):
+    # Task-based browsing tab
+    with web_tabs[0]:
+        st.markdown("""
+        ### Natural Language Tasks
+        
+        Enter a task in natural language, and the agent will:
+        - Determine the best website to visit
+        - Navigate and interact with page elements
+        - Extract relevant information
+        - Complete complex multi-step tasks
+        """)
+        
+        # Task input
+        with st.form("task_navigation_form"):
+            task_input = st.text_area("Enter your task:", 
+                                     placeholder="For example: 'Find the latest quantum computing research papers' or 'Check the weather in New York'",
+                                     height=100)
+            execute_button = st.form_submit_button("Execute Task")
+            
+            if execute_button and task_input:
+                # Add to task history
+                st.session_state.chat_history.append({"role": "user", "content": task_input})
+                
+                with st.spinner(f"Processing task: {task_input}..."):
+                    # Process the task
+                    try:
+                        if st.session_state.agent_initialized and st.session_state.agent_running:
+                            result = asyncio.run(st.session_state.agent.process_task(task_input))
+                            
+                            # Display result
+                            if result.get("success", False):
+                                st.success("Task completed successfully")
+                                
+                                # Add screenshot if available
+                                if "screenshot" in result.get("action_result", {}):
+                                    st.image(f"data:image/png;base64,{result['action_result']['screenshot']}", 
+                                             caption="Screenshot of final state")
+                                
+                                # Add response to chat history
+                                message = result.get("summary", "Task completed successfully.")
+                                st.session_state.chat_history.append({"role": "assistant", "content": message})
+                            else:
+                                error = result.get("error", "Unknown error")
+                                st.error(f"Failed to complete task: {error}")
+                                st.session_state.chat_history.append({"role": "assistant", 
+                                                                    "content": f"Failed to complete task: {error}"})
+                        else:
+                            st.error("Agent is not initialized or running. Please start the agent first.")
+                    except Exception as e:
+                        st.error(f"An error occurred: {str(e)}")
+                        st.session_state.chat_history.append({"role": "assistant", 
+                                                           "content": f"Error while processing task: {str(e)}"})
+    
+    # URL navigation tab
+    with web_tabs[1]:
+        st.markdown("""
+        ### Direct URL Navigation
+        
+        Enter a specific URL to visit and analyze with quantum-enhanced capabilities.
+        """)
+        
+        # URL input
+        with st.form("url_navigation_form"):
+            url_input = st.text_input("Enter URL to visit:", placeholder="https://example.com")
+            browse_button = st.form_submit_button("Browse")
+            
+            if browse_button and url_input:
+                # Add to task history
+                task = f"Navigate to {url_input}"
+                st.session_state.chat_history.append({"role": "user", "content": task})
+                
+                with st.spinner(f"Navigating to {url_input}..."):
+                    # Process the navigation task
+                    try:
+                        if st.session_state.agent_initialized and st.session_state.agent_running:
+                            result = asyncio.run(st.session_state.agent.process_task(task))
+                            
+                            # Display result
+                            if result.get("success", False):
+                                st.success(f"Successfully navigated to {url_input}")
+                                
+                                # Add screenshot if available
+                                if "screenshot" in result.get("action_result", {}):
+                                    st.image(f"data:image/png;base64,{result['action_result']['screenshot']}", 
+                                             caption=f"Screenshot of {url_input}")
+                                
+                                # Add response to chat history
+                                message = f"Successfully navigated to {url_input}"
+                                if "title" in result.get("action_result", {}):
+                                    message += f"\nPage title: {result['action_result']['title']}"
+                                
+                                st.session_state.chat_history.append({"role": "assistant", "content": message})
+                            else:
+                                error = result.get("error", "Unknown error")
+                                st.error(f"Failed to navigate: {error}")
+                                st.session_state.chat_history.append({"role": "assistant", 
+                                                                    "content": f"Failed to navigate to {url_input}: {error}"})
+                        else:
+                            st.error("Agent is not initialized or running. Please start the agent first.")
+                    except Exception as e:
+                        st.error(f"An error occurred: {str(e)}")
+                        st.session_state.chat_history.append({"role": "assistant", 
+                                                           "content": f"Error while navigating: {str(e)}"})
+    
+    # Deep search tab
+    with web_tabs[2]:
+        st.markdown("""
+        ### Quantum-Enhanced Deep Search
+        
+        Enter a search query to perform a deep, multi-source search using quantum-enhanced algorithms.
+        The agent will:
+        1. Identify the most relevant websites
+        2. Extract and synthesize information across sources
+        3. Apply quantum algorithms to rank results by relevance
+        4. Generate a comprehensive answer
+        """)
+        
+        # Search input
+        with st.form("deep_search_form"):
+            search_query = st.text_area("Enter your search query:", 
+                                     placeholder="For example: 'Latest advancements in quantum error correction' or 'Compare different approaches to quantum machine learning'",
+                                     height=100)
+            search_button = st.form_submit_button("Deep Search")
+            
+            if search_button and search_query:
+                # Add to task history
+                deep_search_task = f"Deep search: {search_query}"
+                st.session_state.chat_history.append({"role": "user", "content": deep_search_task})
+                
+                with st.spinner(f"Performing deep search for: {search_query}..."):
+                    # Process the search task
+                    try:
+                        if st.session_state.agent_initialized and st.session_state.agent_running:
+                            result = asyncio.run(st.session_state.agent.process_task(deep_search_task))
+                            
+                            # Display result
+                            if result.get("success", False):
+                                st.success("Deep search completed successfully")
+                                
+                                # Show search results
+                                st.markdown("### Search Results")
+                                search_results = result.get("search_results", [])
+                                
+                                if search_results:
+                                    for i, res in enumerate(search_results):
+                                        with st.expander(f"Result {i+1}: {res.get('title', 'Untitled')}"):
+                                            st.markdown(f"**Source:** {res.get('url', 'Unknown')}")
+                                            st.markdown(f"**Relevance Score:** {res.get('relevance', 0):.2f}")
+                                            st.markdown(f"**Summary:** {res.get('summary', 'No summary available')}")
+                                else:
+                                    st.info("No search results found.")
+                                
+                                # Add response to chat history
+                                message = result.get("summary", "Deep search completed successfully.")
+                                st.session_state.chat_history.append({"role": "assistant", "content": message})
+                            else:
+                                error = result.get("error", "Unknown error")
+                                st.error(f"Failed to complete deep search: {error}")
+                                st.session_state.chat_history.append({"role": "assistant", 
+                                                                    "content": f"Failed to complete deep search: {error}"})
+                        else:
+                            st.error("Agent is not initialized or running. Please start the agent first.")
+                    except Exception as e:
+                        st.error(f"An error occurred: {str(e)}")
+                        st.session_state.chat_history.append({"role": "assistant", 
+                                                           "content": f"Error during deep search: {str(e)}"})
+    
+    # History tab
+    with web_tabs[3]:
+        st.markdown("### Browser History")
+        
+        # Display previous web interactions
         web_interactions = [task for task in st.session_state.task_history 
-                          if "navigate" in task.get("task", "").lower()]
+                          if "navigate" in task.get("task", "").lower() or 
+                          "deep search" in task.get("task", "").lower() or
+                          "browse" in task.get("task", "").lower()]
         
         if not web_interactions:
             st.info("No web browsing history yet.")
         else:
             for interaction in web_interactions:
-                st.markdown(f"**URL:** {interaction.get('task', '').replace('Navigate to ', '')}")
-                st.markdown(f"**Time:** {interaction.get('timestamp', 'Unknown')}")
-                
-                # Display screenshot if available
-                result = interaction.get("result", {})
-                action_result = result.get("action_result", {})
-                if "screenshot" in action_result:
-                    st.image(f"data:image/png;base64,{action_result['screenshot']}", 
-                             caption="Screenshot", width=400)
+                with st.expander(f"{interaction.get('task', 'Unknown task')}"):
+                    st.markdown(f"**Time:** {interaction.get('timestamp', 'Unknown')}")
+                    
+                    # Display screenshot if available
+                    result = interaction.get("result", {})
+                    action_result = result.get("action_result", {})
+                    if "screenshot" in action_result:
+                        st.image(f"data:image/png;base64,{action_result['screenshot']}", 
+                                caption="Screenshot", width=400)
+                    
+                    # Display additional result info
+                    st.markdown(f"**Success:** {result.get('success', False)}")
+                    if "quantum_enhanced" in result:
+                        st.markdown(f"**Quantum Enhanced:** {result.get('quantum_enhanced', False)}")
+                    
+                    # Show any error
+                    if not result.get('success', False) and "error" in result:
+                        st.error(f"Error: {result.get('error')}")
                 st.markdown("---")
 
 def display_quantum_demo():

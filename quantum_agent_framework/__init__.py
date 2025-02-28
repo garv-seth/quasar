@@ -1,10 +1,8 @@
 """
-QUASAR: Quantum-Accelerated Search and Reasoning Framework
-Version: 1.0
+Quantum Agent Framework - Main Module
 """
 
-from .classical import *
-from .quantum import *
-from .integration import *
-
-__version__ = "1.0.0"
+try:
+    from .search import QuantumEnhancedSearch
+except ImportError:
+    pass

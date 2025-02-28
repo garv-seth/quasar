@@ -1,1 +1,3 @@
-"""Quantum-Accelerated Agent Core Components"""
+"""
+Agent Core Module
+"""
