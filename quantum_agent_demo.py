@@ -448,7 +448,7 @@ def display_agent_interface():
         
         if submit_button and user_input:
             asyncio.run(process_task(user_input))
-            st.experimental_rerun()
+            st.rerun()
 
 def display_task_history():
     """Display task history"""
@@ -732,7 +732,7 @@ def display_agent_settings():
             if st.button("Initialize Agent with Current Settings"):
                 asyncio.run(initialize_agent())
                 st.success("Agent initialized with new settings")
-                st.experimental_rerun()
+                st.rerun()
 
 def display_about():
     """Display information about the quantum agent framework"""

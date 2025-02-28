@@ -1031,7 +1031,7 @@ class QuantumDecisionSystem:
         if not openai_client:
             raise Exception("OpenAI client not initialized")
         
-        response = await openai_client.chat.completions.create(
+        response = openai_client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "You are an advanced AI agent analyzing a situation. Provide a detailed analysis in JSON format."},
@@ -1041,7 +1041,14 @@ class QuantumDecisionSystem:
             max_tokens=1000
         )
         
-        return response.choices[0].message.content
+        # Handle response depending on whether it's async or sync
+        if hasattr(response, "__await__"):
+            # It's an awaitable, so await it
+            response = await response
+            return response.choices[0].message.content
+        else:
+            # It's already a response
+            return response.choices[0].message.content
     
     async def _call_anthropic_analysis(self, prompt: str) -> str:
         """Call Anthropic API for situation analysis"""
@@ -1049,7 +1056,7 @@ class QuantumDecisionSystem:
         if not anthropic_client:
             raise Exception("Anthropic client not initialized")
         
-        response = await anthropic_client.messages.create(
+        response = anthropic_client.messages.create(
             model="claude-3-opus-20240229",
             max_tokens=1000,
             system="You are an advanced AI agent analyzing a situation. Provide a detailed analysis in JSON format.",
@@ -1058,7 +1065,14 @@ class QuantumDecisionSystem:
             ]
         )
         
-        return response.content[0].text
+        # Handle response depending on whether it's async or sync
+        if hasattr(response, "__await__"):
+            # It's an awaitable, so await it
+            response = await response
+            return response.content[0].text
+        else:
+            # It's already a response
+            return response.content[0].text
     
     def _create_analysis_prompt(self, 
                               perception_data: Dict[str, Any], 
@@ -1343,7 +1357,7 @@ class QuantumDecisionSystem:
         if not openai_client:
             raise Exception("OpenAI client not initialized")
         
-        response = await openai_client.chat.completions.create(
+        response = openai_client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "You are an advanced AI agent generating decision options. Provide options in JSON format."},
@@ -1353,7 +1367,14 @@ class QuantumDecisionSystem:
             max_tokens=1000
         )
         
-        return response.choices[0].message.content
+        # Handle response depending on whether it's async or sync
+        if hasattr(response, "__await__"):
+            # It's an awaitable, so await it
+            response = await response
+            return response.choices[0].message.content
+        else:
+            # It's already a response
+            return response.choices[0].message.content
     
     async def _call_anthropic_options(self, prompt: str) -> str:
         """Call Anthropic API for options generation"""
@@ -1361,7 +1382,7 @@ class QuantumDecisionSystem:
         if not anthropic_client:
             raise Exception("Anthropic client not initialized")
         
-        response = await anthropic_client.messages.create(
+        response = anthropic_client.messages.create(
             model="claude-3-opus-20240229",
             max_tokens=1000,
             system="You are an advanced AI agent generating decision options. Provide options in JSON format.",
@@ -1370,7 +1391,14 @@ class QuantumDecisionSystem:
             ]
         )
         
-        return response.content[0].text
+        # Handle response depending on whether it's async or sync
+        if hasattr(response, "__await__"):
+            # It's an awaitable, so await it
+            response = await response
+            return response.content[0].text
+        else:
+            # It's already a response
+            return response.content[0].text
     
     def _create_options_generation_prompt(self, 
                                         situation_analysis: Dict[str, Any],
