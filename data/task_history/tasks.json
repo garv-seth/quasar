@@ -1,20 +1,45 @@
 [
   {
-    "task": "Search: Find me jobs at Microsoft",
+    "task": "Hey there",
+    "task_type": "general",
+    "status": "success",
+    "execution_time": 4.454548597335815,
+    "quantum_enhanced": true,
+    "result": {
+      "success": true,
+      "task": "Hey there",
+      "task_analysis": {
+        "suggested_action": "conversation",
+        "response": "Hello! How are you doing today? Please let me know if there is anything specific I can assist you with.",
+        "explanation": "The user's greeting of 'Hey there' does not contain a specific request or task. It seems to be a general conversation starter. The best approach is to respond with a friendly greeting in return and invite the user to share more about what they need help with.",
+        "ai_provider": "claude"
+      },
+      "summary": "Hello! How are you doing today? Please let me know if there is anything specific I can assist you with.",
+      "task_type": "general",
+      "execution_time": 4.454548597335815,
+      "timestamp": "2025-03-01T01:15:16.757583",
+      "quantum_enhanced": true,
+      "task_id": "task_1740791716_0"
+    },
+    "id": "task_1740791716_0",
+    "timestamp": "2025-03-01T01:15:16.757607"
+  },
+  {
+    "task": "Deep search: What is quantum computing",
     "task_type": "search",
     "status": "success",
-    "execution_time": 1.340820074081421,
+    "execution_time": 1.0586085319519043,
     "quantum_enhanced": true,
     "result": {
       "success": true,
       "search_id": 1,
-      "query": "Find me jobs at Microsoft",
+      "query": "what is quantum computing",
       "search_results": [
         {
-          "id": "indeed_1740790411_6",
-          "title": "Senior Find Me Jobs At Microsoft Specialist",
-          "snippet": "Digital Enterprises is seeking a talented professional with expertise in Find me jobs at Microsoft to join our all industries team. The ideal candidate will have strong skills in Find me jobs at Microsoft and experience with all industries.",
-          "url": "https://www.indeed.com/search?q=Find+me+jobs+at+Microsoft&result=6",
-          "source": "Indeed",
-          "source_type": "jobs",
+          "id": "associated_press_1740791748_1",
+          "title": "Latest developments in What Is Quantum Computing: A us news perspective",
+          "snippet": "Recent developments regarding what is quantum computing have shown important trends in us news. Experts suggest that these changes could have significant implications for the future of what is quantum computing and related areas.",
+          "url": "https://apnews.com/search?q=what+is+quantum+computing&result=1",
+          "source": "Associated Press",
+          "source_type": "news",
           "relevance_score": 

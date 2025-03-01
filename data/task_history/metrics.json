@@ -1,0 +1,13 @@
+{
+  "total_tasks": 1,
+  "successful_tasks": 1,
+  "failed_tasks": 0,
+  "search_tasks": 0,
+  "navigation_tasks": 0,
+  "interaction_tasks": 0,
+  "general_tasks": 1,
+  "quantum_enhanced_tasks": 1,
+  "classical_tasks": 0,
+  "average_execution_time": 4.454548597335815,
+  "quantum_speedup_factor": 1.0
+}
