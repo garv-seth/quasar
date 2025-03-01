@@ -50,6 +50,17 @@ class QA3AgentEnhanced:
         self.use_claude = use_claude
         self.use_openai = use_openai
         
+        # Status tracking
+        self.status = {
+            "agent_state": "initializing",
+            "last_update": datetime.now().isoformat(),
+            "components": {},
+            "tasks_completed": 0,
+            "searches_performed": 0,
+            "web_interactions": 0,
+            "quantum_operations": 0
+        }
+        
         # Initialize components
         self.search_integration = None
         self.browser_integration = None
@@ -61,17 +72,6 @@ class QA3AgentEnhanced:
         self.claude_client = None
         self.openai_client = None
         self._initialize_ai_clients()
-        
-        # Status tracking
-        self.status = {
-            "agent_state": "initializing",
-            "last_update": datetime.now().isoformat(),
-            "components": {},
-            "tasks_completed": 0,
-            "searches_performed": 0,
-            "web_interactions": 0,
-            "quantum_operations": 0
-        }
         
         logger.info("Enhanced QA³ agent created, ready for initialization")
     
