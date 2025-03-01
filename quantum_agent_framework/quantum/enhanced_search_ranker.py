@@ -484,4 +484,3 @@ class EnhancedQuantumRanker:
             "quantum_enabled": self.use_quantum,
             "n_qubits": self.n_qubits
         }
-"""

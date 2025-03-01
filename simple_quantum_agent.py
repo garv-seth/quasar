@@ -1,8 +1,8 @@
 """
 QA³: Quantum-Accelerated AI Agent - Unified Interface
 
-This streamlined interface provides a single entry point for the QA³ agent,
-with a simple interface for searching across 20+ sources with quantum acceleration.
+This streamlined interface provides a conversational AI agent with 
+quantum-enhanced deep search capabilities.
 """
 
 import os
@@ -51,6 +51,19 @@ def initialize_session_state():
         
     if 'search_results' not in st.session_state:
         st.session_state.search_results = None
+        
+    if 'messages' not in st.session_state:
+        st.session_state.messages = []
+        
+    if 'current_view' not in st.session_state:
+        st.session_state.current_view = "chat"
+        
+    # Initialize PWA status
+    if 'pwa_status' not in st.session_state:
+        st.session_state.pwa_status = {
+            "installed": False,
+            "canInstall": False
+        }
 
 async def initialize_agent():
     """Initialize the QA³ agent"""
@@ -76,23 +89,26 @@ async def initialize_agent():
         logger.error(f"Agent initialization failed: {str(e)}", exc_info=True)
         return False
 
-async def process_task(task):
-    """Process a user task with the QA³ agent"""
+async def process_message(message):
+    """Process a user message with the QA³ agent"""
     if not st.session_state.agent_initialized:
         success = await initialize_agent()
         if not success:
-            st.error("Agent not initialized")
-            return {"success": False, "error": "Agent not initialized"}
+            return {
+                "success": False, 
+                "error": "Agent not initialized", 
+                "response": "I'm having trouble connecting to my quantum capabilities. Please try again later."
+            }
     
     try:
-        # Process the task with the agent
-        with st.spinner(f"Processing: {task}"):
-            # Process the task
-            result = await st.session_state.agent.process_task(task)
+        # Process the message with the agent
+        with st.spinner("Thinking..."):
+            # Process the message
+            result = await st.session_state.agent.process_task(message)
             
             # Record the result in task history
             record = {
-                "task": task,
+                "task": message,
                 "result": result,
                 "timestamp": datetime.now().isoformat()
             }
@@ -100,12 +116,15 @@ async def process_task(task):
             
         return result
     except Exception as e:
-        error_msg = f"Error processing task: {str(e)}"
-        logger.error(f"Exception in process_task: {str(e)}", exc_info=True)
-        st.error(error_msg)
-        return {"success": False, "error": error_msg}
+        error_msg = f"Error processing message: {str(e)}"
+        logger.error(f"Exception in process_message: {str(e)}", exc_info=True)
+        return {
+            "success": False, 
+            "error": error_msg,
+            "response": "I encountered an error while processing your message. Please try again."
+        }
 
-async def perform_search(query, use_quantum=True):
+async def perform_search(query, use_quantum=True, deep_search=False):
     """Perform a search using the agent"""
     if not st.session_state.agent_initialized:
         success = await initialize_agent()
@@ -117,15 +136,19 @@ async def perform_search(query, use_quantum=True):
         st.warning("Please enter a search query")
         return {"success": False, "error": "Empty search query"}
     
-    # Format search task
+    # Format search task with optional deep search flag
     task = f"Search: {query}"
+    if deep_search:
+        task = f"Deep search: {query}"
     
     try:
         # Update quantum setting before search
         st.session_state.agent.use_quantum = use_quantum
         
         # Use the agent to process the search
-        with st.spinner(f"Searching for: {query}" + (" (with quantum acceleration)" if use_quantum else "")):
+        with st.spinner(f"Searching for: {query}" + 
+                      (" (with quantum acceleration)" if use_quantum else "") +
+                      (" (deep search)" if deep_search else "")):
             result = await st.session_state.agent.process_task(task)
             
             # Store search results in session state
@@ -138,34 +161,105 @@ async def perform_search(query, use_quantum=True):
         st.error(error_msg)
         return {"success": False, "error": error_msg}
 
-def display_unifiedInterface():
-    """Display the unified interface for the QA³ agent"""
-    st.title("QA³: Quantum-Accelerated AI Agent")
+def display_chat_interface():
+    """Display the chat interface for the QA³ agent"""
+    st.title("QA³: Quantum-Accelerated AI Assistant")
     
-    # Initializing the agent in the background
+    # Initialize agent in the background if needed
     if not st.session_state.agent_initialized:
-        with st.status("Initializing QA³ agent...", expanded=True) as status:
-            asyncio.run(initialize_agent())
-            if st.session_state.agent_initialized:
-                status.update(label="QA³ agent ready!", state="complete")
+        asyncio.run(initialize_agent())
     
-    # Search interface
-    st.header("Quantum-Enhanced Search")
+    # Chat container
+    chat_container = st.container()
     
-    with st.form(key="unified_search_form"):
-        query = st.text_input("Enter your search query:", key="unified_query_input")
+    # Display existing messages
+    with chat_container:
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+    
+    # Handle new message input
+    if prompt := st.chat_input("Ask me anything or type a query to search..."):
+        # Add user message to chat history
+        st.session_state.messages.append({"role": "user", "content": prompt})
         
-        col1, col2 = st.columns([3, 1])
+        # Display user message
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        # Display AI response
+        with st.chat_message("assistant"):
+            message_placeholder = st.empty()
+            message_placeholder.markdown("⚛️ Thinking...")
+            
+            # Process the message
+            result = asyncio.run(process_message(prompt))
+            
+            if result.get("success", False):
+                response = result.get("response", "I processed your request but couldn't generate a response.")
+                message_placeholder.markdown(response)
+                
+                # Check if search was performed
+                if "search_results" in result and result["search_results"]:
+                    st.session_state.search_results = result
+                    
+                    # Show a deep search button if it seems like a search query
+                    if result.get("is_search_query", False) and not result.get("deep_search", False):
+                        if st.button("🔍 Perform Deep Search", key="deep_search_button"):
+                            with st.spinner("Performing deep search..."):
+                                deep_result = asyncio.run(perform_search(prompt, use_quantum=True, deep_search=True))
+                                if deep_result.get("success", False):
+                                    st.session_state.search_results = deep_result
+                                    
+                                    # Add search result to message
+                                    if "comprehensive_summary" in deep_result:
+                                        deep_summary = f"""
+                                        ## Deep Search Results
+                                        
+                                        {deep_result["comprehensive_summary"]}
+                                        
+                                        *Search performed across {deep_result.get('source_count', 0)} sources with quantum acceleration.*
+                                        """
+                                        message_placeholder.markdown(response + "\n\n" + deep_summary)
+                    
+                    # Show search metrics
+                    if result.get("is_search_query", False):
+                        method = "quantum-enhanced" if result.get("quantum_enhanced", False) else "classical"
+                        deep = "deep " if result.get("deep_search", False) else ""
+                        sources = result.get("source_count", 0)
+                        results_count = result.get("result_count", 0)
+                        
+                        st.caption(f"*{deep}Search performed with {method} processing across {sources} sources, finding {results_count} results*")
+            else:
+                message_placeholder.markdown(f"I'm sorry, I encountered an error: {result.get('error', 'Unknown error')}")
+            
+            # Add AI response to chat history
+            st.session_state.messages.append({
+                "role": "assistant", 
+                "content": result.get("response", "Error: No response generated")
+            })
+
+def display_search_interface():
+    """Display the search interface for the QA³ agent"""
+    st.title("Quantum-Enhanced Search")
+    
+    with st.form(key="search_form"):
+        query = st.text_input("Enter your search query:", key="search_query_input")
+        
+        col1, col2, col3 = st.columns([2, 2, 1])
         
         with col1:
             use_quantum = st.checkbox("Enable quantum acceleration", value=st.session_state.use_quantum)
         
         with col2:
+            deep_search = st.checkbox("Enable deep search", value=False)
+        
+        with col3:
             submit_button = st.form_submit_button("🔍 Search")
         
         if submit_button and query:
             # Execute search
-            result = asyncio.run(perform_search(query, use_quantum))
+            result = asyncio.run(perform_search(query, use_quantum, deep_search))
             
             # Store query for later
             st.session_state.query = query
@@ -183,6 +277,7 @@ def display_unifiedInterface():
         # Display search information
         if results.get("success", False):
             method = "quantum-enhanced" if results.get("quantum_enhanced", False) else "classical"
+            deep = "deep " if results.get("deep_search", False) else ""
             source_count = results.get("source_count", 1)
             result_count = results.get("result_count", 0)
             execution_time = results.get("execution_time", 0)
@@ -230,6 +325,53 @@ def display_unifiedInterface():
                         st.divider()
         else:
             st.error(f"Search failed: {results.get('error', 'Unknown error')}")
+            
+def display_sidebar():
+    """Display the sidebar with navigation and controls"""
+    with st.sidebar:
+        st.title("QA³ Agent")
+        
+        # Navigation
+        st.subheader("Navigation")
+        view = st.radio("Select View", ["Chat", "Search"], 
+                       index=0 if st.session_state.current_view == "chat" else 1)
+        
+        if view == "Chat" and st.session_state.current_view != "chat":
+            st.session_state.current_view = "chat"
+            st.rerun()
+        elif view == "Search" and st.session_state.current_view != "search":
+            st.session_state.current_view = "search"
+            st.rerun()
+        
+        # Quantum Settings
+        st.subheader("Quantum Settings")
+        n_qubits = st.slider("Number of Qubits", min_value=4, max_value=16, value=st.session_state.n_qubits)
+        if n_qubits != st.session_state.n_qubits:
+            st.session_state.n_qubits = n_qubits
+            # Reset agent to apply new settings
+            st.session_state.agent_initialized = False
+            asyncio.run(initialize_agent())
+        
+        # Display agent status
+        if st.session_state.agent_initialized:
+            st.success("Agent Ready")
+        else:
+            st.warning("Agent Initializing...")
+            
+        # PWA Installation
+        st.subheader("Install App")
+        if st.session_state.pwa_status.get("canInstall", False):
+            if st.button("📱 Install as App", key="pwa-install-button"):
+                st.markdown("Click the button above to install the app on your device.")
+        elif st.session_state.pwa_status.get("installed", False):
+            st.success("App Installed")
+        else:
+            st.info("This app can be installed on your device for offline access.")
+            
+        # Reset chat
+        if st.button("🔄 Reset Chat"):
+            st.session_state.messages = []
+            st.rerun()
 
 def display_quantum_explanation():
     """Display explanation of quantum acceleration"""
@@ -286,14 +428,27 @@ def main():
         page_title="QA³: Quantum-Accelerated AI Agent",
         page_icon="⚛",
         layout="wide",
-        initial_sidebar_state="collapsed"
+        initial_sidebar_state="expanded"
     )
     
     # Initialize session state
     initialize_session_state()
     
-    # Display unified interface
-    display_unifiedInterface()
+    # Add PWA Script
+    st.markdown("""
+    <script src="/pwa.js" defer></script>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#7B68EE">
+    """, unsafe_allow_html=True)
+    
+    # Display the sidebar
+    display_sidebar()
+    
+    # Display the appropriate interface based on the current view
+    if st.session_state.current_view == "chat":
+        display_chat_interface()
+    else:
+        display_search_interface()
     
     # Display quantum explanation
     display_quantum_explanation()
