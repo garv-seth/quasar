@@ -1,8 +1,8 @@
 """
-Quantum Agent Framework - Main Module
+Quantum Agent Framework for QA³ (Quantum-Accelerated AI Agent)
+
+This framework provides the core components for a quantum-accelerated AI agent
+with advanced capabilities for search, browsing, and task execution.
 """
 
-try:
-    from .search import QuantumEnhancedSearch
-except ImportError:
-    pass
+__version__ = "1.0.0"

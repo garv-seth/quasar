@@ -1,7 +1,9 @@
 """
-Quantum-Enhanced Search Module for QA³ Agent
+Quantum-Accelerated Search Package for QA³ Agent
+
+This package provides comprehensive search capabilities with quantum acceleration.
 """
 
-from .quantum_enhanced_search import QuantumEnhancedSearch
+from quantum_agent_framework.search.deep_search import DeepSearch
 
-__all__ = ["QuantumEnhancedSearch"]
+__all__ = ['DeepSearch']
