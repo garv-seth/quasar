@@ -1,62 +1,57 @@
 """
-Quantum-Enhanced Search Module
-This module provides deep search capabilities using quantum acceleration
-for improved relevance ranking and information extraction.
+Quantum-Enhanced Search Implementation
+
+This module provides advanced search capabilities with quantum acceleration
+for the QA³ Agent framework.
 """
 
 import os
+import re
 import json
+import time
 import logging
 import asyncio
-import time
-from typing import Dict, List, Any, Optional, Tuple
-import re
 import random
+from typing import Dict, List, Any, Optional, Tuple, Union
 from datetime import datetime
+import math
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("quantum-enhanced-search")
+logger = logging.getLogger("quantum-search")
 
+# Try to import quantum libraries
 try:
     import numpy as np
     import pennylane as qml
     QUANTUM_AVAILABLE = True
 except ImportError:
     QUANTUM_AVAILABLE = False
-    logger.warning("PennyLane or NumPy not available. Using classical search methods only.")
+    logger.warning("PennyLane or NumPy not available. Using simulated quantum search.")
 
-try:
-    import requests
-    from bs4 import BeautifulSoup
-    WEB_SEARCH_AVAILABLE = True
-except ImportError:
-    WEB_SEARCH_AVAILABLE = False
-    logger.warning("Requests or BeautifulSoup not available. Web search capabilities limited.")
-
+# Try to import AI libraries
 try:
     from openai import AsyncOpenAI
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
-    logger.warning("OpenAI not available. Using simplified content analysis.")
+    logger.warning("OpenAI SDK not available. Search summaries will be limited.")
 
 try:
     import anthropic
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
-    logger.warning("Anthropic not available. Using alternative content analysis.")
+    logger.warning("Anthropic SDK not available. Search summaries will be limited.")
 
 class QuantumEnhancedSearch:
     """
-    Quantum-enhanced search capabilities
+    Quantum-Enhanced Search implementation
     
-    This class provides deep search functionality with quantum acceleration for:
-    1. Multi-source information retrieval
-    2. Quantum-enhanced relevance ranking
-    3. Content summarization and extraction
-    4. Cross-source information synthesis
+    This class provides:
+    1. Deep search capabilities with quantum acceleration
+    2. Relevance ranking with quantum algorithms
+    3. Intelligent information extraction
     """
     
     def __init__(self, n_qubits: int = 8, use_quantum: bool = True):
@@ -69,596 +64,474 @@ class QuantumEnhancedSearch:
         """
         self.n_qubits = n_qubits
         self.use_quantum = use_quantum and QUANTUM_AVAILABLE
-        self.last_search_results = []
-        self.search_history = []
         
-        # Initialize AI clients if available
+        # Initialize AI clients
         self.openai_client = None
-        self.anthropic_client = None
-        
         if OPENAI_AVAILABLE and os.environ.get("OPENAI_API_KEY"):
             self.openai_client = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
         
+        self.anthropic_client = None
         if ANTHROPIC_AVAILABLE and os.environ.get("ANTHROPIC_API_KEY"):
             self.anthropic_client = anthropic.AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-            
-        # Initialize quantum circuit if available
+        
+        # Initialize quantum device if available
+        self.dev = None
         if self.use_quantum:
-            self._initialize_quantum_circuit()
+            try:
+                self.dev = qml.device("default.qubit", wires=self.n_qubits)
+                logger.info(f"Quantum device initialized with {self.n_qubits} qubits")
+                
+                # Define quantum circuits
+                self.quantum_circuit = qml.QNode(self._relevance_circuit, self.dev)
+                
+                logger.info("Quantum circuit compiled successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize quantum device: {str(e)}")
+                self.use_quantum = False
+        
+        # Track search history
+        self.search_history = []
+        
+        logger.info(f"Quantum-enhanced search initialized (quantum_enabled={self.use_quantum})")
     
-    def _initialize_quantum_circuit(self):
-        """Initialize the quantum circuits for search enhancement"""
-        try:
-            # Define the quantum device
-            self.dev = qml.device("default.qubit", wires=self.n_qubits)
-            
-            # Define the quantum circuit for relevance scoring
-            @qml.qnode(self.dev)
-            def relevance_circuit(query_features, doc_features, weights):
-                # Encode query features
-                for i, feat in enumerate(query_features):
-                    if i < self.n_qubits:
-                        qml.RY(feat * np.pi, wires=i)
-                
-                # Apply entangling gates for cross-feature interactions
-                for i in range(self.n_qubits - 1):
-                    qml.CNOT(wires=[i, i+1])
-                
-                # Apply weighted rotation based on document features
-                for i, (feat, weight) in enumerate(zip(doc_features, weights)):
-                    if i < self.n_qubits:
-                        qml.RZ(feat * weight * np.pi, wires=i)
-                
-                # Apply final mixing layer
-                for i in range(self.n_qubits):
-                    qml.Hadamard(wires=i)
-                
-                # Return measurements
-                return [qml.expval(qml.PauliZ(i)) for i in range(self.n_qubits)]
-            
-            self.relevance_circuit = relevance_circuit
-            logger.info(f"Quantum circuit initialized with {self.n_qubits} qubits")
-        except Exception as e:
-            logger.error(f"Error initializing quantum circuit: {str(e)}")
-            self.use_quantum = False
-    
-    async def deep_search(self, query: str, max_sources: int = 5) -> Dict[str, Any]:
+    def _relevance_circuit(self, params, x):
         """
-        Perform a deep search across multiple sources with quantum-enhanced relevance ranking
+        Quantum circuit for relevance scoring
         
         Args:
+            params: Circuit parameters
+            x: Input feature vector
+        """
+        # Encode input features
+        for i in range(min(len(x), self.n_qubits)):
+            qml.RY(x[i] * np.pi, wires=i)
+        
+        # Entangling layers
+        for i in range(min(3, self.n_qubits - 1)):
+            for j in range(self.n_qubits - 1):
+                qml.CNOT(wires=[j, j + 1])
+            
+            for j in range(self.n_qubits):
+                qml.RY(params[i, j], wires=j)
+        
+        # Return expectation value of first qubit
+        return qml.expval(qml.PauliZ(0))
+    
+    def _feature_vector(self, text: str, query: str) -> List[float]:
+        """
+        Create a feature vector from text and query
+        
+        Args:
+            text: The text to analyze
             query: The search query
-            max_sources: Maximum number of sources to search
             
         Returns:
-            Dict with search results and metadata
+            Feature vector
         """
-        search_start_time = time.time()
+        # Simple feature extraction (in a real implementation, this would use embeddings)
+        features = []
         
-        # Log the search
-        logger.info(f"Starting deep search for: {query}")
+        # Feature 1: Query term presence (normalized)
+        query_terms = query.lower().split()
+        text_lower = text.lower()
+        term_matches = sum(1 for term in query_terms if term in text_lower)
+        features.append(min(1.0, term_matches / max(1, len(query_terms))))
+        
+        # Feature 2: Text length (normalized)
+        features.append(min(1.0, len(text) / 1000))
+        
+        # Feature 3: Exact phrase match
+        features.append(1.0 if query.lower() in text_lower else 0.0)
+        
+        # Feature 4: Word count ratio
+        text_words = len(text_lower.split())
+        query_words = len(query_terms)
+        features.append(min(1.0, query_words / max(1, text_words)))
+        
+        # Pad to n_qubits
+        features.extend([0.0] * (self.n_qubits - len(features)))
+        
+        return features[:self.n_qubits]
+    
+    async def deep_search(self, query: str, max_results: int = 5) -> Dict[str, Any]:
+        """
+        Perform a deep search with quantum acceleration
+        
+        Args:
+            query: Search query
+            max_results: Maximum number of results to return
+            
+        Returns:
+            Dict with search results
+        """
+        start_time = time.time()
+        search_id = len(self.search_history) + 1
+        
+        logger.info(f"Starting deep search for query: {query}")
         
         try:
-            # Phase 1: Initial search to identify potential sources
-            sources = await self._initial_search(query, max_sources)
+            # Simulate search results from different sources
+            search_results = await self._simulate_search_results(query)
             
-            # Phase 2: In-depth content retrieval and analysis
-            results = await self._retrieve_and_analyze(query, sources)
+            # Track original ranking
+            for i, result in enumerate(search_results):
+                result["original_rank"] = i + 1
             
-            # Phase 3: Quantum-enhanced relevance ranking
+            # Apply quantum or classical ranking
             if self.use_quantum:
-                ranked_results = self._quantum_rank_results(query, results)
+                ranked_results = await self._quantum_rank_results(search_results, query)
+                logger.info(f"Applied quantum ranking to {len(search_results)} results")
             else:
-                ranked_results = self._classical_rank_results(query, results)
+                ranked_results = await self._classical_rank_results(search_results, query)
+                logger.info(f"Applied classical ranking to {len(search_results)} results")
             
-            # Phase 4: Information synthesis
-            synthesis = await self._synthesize_information(query, ranked_results)
+            # Limit results
+            ranked_results = ranked_results[:max_results]
             
-            # Prepare the final result
-            search_time = time.time() - search_start_time
+            # Generate search highlights
+            highlights = await self._generate_highlights(query, ranked_results)
             
-            # Store results for history
-            self.last_search_results = ranked_results
-            self.search_history.append({
+            # Record search
+            execution_time = time.time() - start_time
+            search_record = {
+                "id": search_id,
                 "query": query,
                 "timestamp": datetime.now().isoformat(),
-                "results_count": len(ranked_results),
-                "search_time": search_time,
-                "quantum_enhanced": self.use_quantum
-            })
+                "result_count": len(ranked_results),
+                "quantum_enhanced": self.use_quantum,
+                "execution_time": execution_time
+            }
+            self.search_history.append(search_record)
             
+            # Return search results
             return {
                 "success": True,
+                "search_id": search_id,
                 "query": query,
-                "search_results": ranked_results[:max_sources],  # Return only top results
-                "synthesis": synthesis,
-                "summary": synthesis.get("summary", ""),
-                "search_highlights": "\n".join([f"- {r['title']}: {r['summary']}" for r in ranked_results[:3]]),
-                "search_time": search_time,
+                "search_results": ranked_results,
+                "search_highlights": highlights,
+                "result_count": len(ranked_results),
                 "quantum_enhanced": self.use_quantum,
-                "sources_analyzed": len(sources),
-                "total_results_found": len(results)
+                "execution_time": execution_time,
+                "ranking_method": "quantum" if self.use_quantum else "classical"
             }
         except Exception as e:
-            logger.error(f"Error in deep search: {str(e)}", exc_info=True)
+            logger.error(f"Error during deep search: {str(e)}", exc_info=True)
             return {
                 "success": False,
+                "search_id": search_id,
                 "query": query,
                 "error": str(e),
-                "search_time": time.time() - search_start_time,
-                "quantum_enhanced": self.use_quantum
+                "quantum_enhanced": self.use_quantum,
+                "execution_time": time.time() - start_time
             }
     
-    async def _initial_search(self, query: str, max_sources: int) -> List[Dict[str, Any]]:
+    async def _simulate_search_results(self, query: str) -> List[Dict[str, Any]]:
         """
-        Perform initial search to identify potential sources
+        Simulate search results from different sources
         
         Args:
-            query: The search query
-            max_sources: Maximum number of sources to search
+            query: Search query
             
         Returns:
-            List of source information dictionaries
+            List of search results
         """
-        sources = []
-        
-        # For demonstration purposes, simulate search results
-        # In a real implementation, this would interface with search engines,
-        # databases, and other information sources
-        
-        # Simulate delays for realistic search timing
+        # Simulate delay
         await asyncio.sleep(0.5)
         
-        # Create simulated search results
-        for i in range(max_sources):
-            source_type = random.choice(["webpage", "academic", "news", "encyclopedia"])
-            relevance_score = 0.9 - (i * 0.1)  # First results are more relevant
-            
-            if source_type == "webpage":
-                url = f"https://example{i}.com/quantum-computing"
-                title = f"Quantum Computing Resources {i}"
-            elif source_type == "academic":
-                url = f"https://arxiv.org/abs/{1900+i}.{10000+i}"
-                title = f"Research Paper on {query.title()} - {2020+i}"
-            elif source_type == "news":
-                url = f"https://technews{i}.com/quantum-news"
-                title = f"Latest News on {query.title()}"
-            else:
-                url = f"https://encyclopedia{i}.org/entry/{query.replace(' ', '_')}"
-                title = f"{query.title()} - Encyclopedia Entry"
-            
-            sources.append({
-                "url": url,
-                "title": title,
-                "source_type": source_type,
-                "initial_relevance": relevance_score
-            })
-        
-        return sources
-    
-    async def _retrieve_and_analyze(self, query: str, sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        Retrieve and analyze content from identified sources
-        
-        Args:
-            query: The search query
-            sources: List of sources to analyze
-            
-        Returns:
-            List of analyzed results
-        """
         results = []
         
-        # Process each source
-        for source in sources:
-            # Simulate content retrieval
-            await asyncio.sleep(0.3)
-            
-            # Generate simulated content based on source type
-            content = self._generate_simulated_content(query, source["source_type"])
-            
-            # Add to results
-            results.append({
-                "url": source["url"],
-                "title": source["title"],
-                "source_type": source["source_type"],
-                "content": content,
-                "initial_relevance": source["initial_relevance"],
-                "extracted_at": datetime.now().isoformat()
-            })
+        # Simulate web search results
+        web_results = [
+            {
+                "title": f"Comprehensive Guide to {query.title()}",
+                "url": f"https://example.com/guide/{query.replace(' ', '-').lower()}",
+                "source": "web",
+                "snippet": f"This comprehensive guide covers everything you need to know about {query}. Learn about the latest developments and best practices.",
+                "published_date": "2025-01-15"
+            },
+            {
+                "title": f"Understanding {query.title()} in 2025",
+                "url": f"https://techblog.com/understanding-{query.replace(' ', '-').lower()}",
+                "source": "web",
+                "snippet": f"A thorough explanation of {query} and its applications in modern contexts. Includes practical examples and case studies.",
+                "published_date": "2025-02-01"
+            },
+            {
+                "title": f"The Future of {query.title()}",
+                "url": f"https://futurist.com/{query.replace(' ', '-').lower()}-future",
+                "source": "web",
+                "snippet": f"Explore the upcoming trends and innovations in {query}. Industry experts share their predictions and insights.",
+                "published_date": "2025-02-20"
+            }
+        ]
+        results.extend(web_results)
+        
+        # Simulate academic results
+        academic_results = [
+            {
+                "title": f"A Survey of Recent Advances in {query.title()}",
+                "url": f"https://arxiv.org/abs/2502.12345",
+                "source": "academic",
+                "snippet": f"This paper presents a comprehensive survey of recent advances in {query}, highlighting key contributions and identifying open challenges.",
+                "published_date": "2025-02-01",
+                "authors": "A. Researcher, B. Scientist"
+            },
+            {
+                "title": f"Quantum Computing Applications in {query.title()}",
+                "url": f"https://journals.science.org/quantum/{query.replace(' ', '').lower()}",
+                "source": "academic",
+                "snippet": f"We present novel quantum computing approaches to accelerate tasks related to {query}, demonstrating significant speedups over classical methods.",
+                "published_date": "2025-01-10",
+                "authors": "Q. Physicist, C. Engineer"
+            }
+        ]
+        results.extend(academic_results)
+        
+        # Simulate news results
+        news_results = [
+            {
+                "title": f"Breaking: Major Breakthrough in {query.title()} Announced",
+                "url": f"https://technews.com/breakthrough-{query.replace(' ', '-').lower()}",
+                "source": "news",
+                "snippet": f"Scientists have announced a significant breakthrough in {query} that could revolutionize the field. Industry experts are calling it a game-changer.",
+                "published_date": "2025-02-28"
+            },
+            {
+                "title": f"Tech Giants Invest Billions in {query.title()} Research",
+                "url": f"https://businessnews.com/investment-{query.replace(' ', '-').lower()}",
+                "source": "news",
+                "snippet": f"Leading technology companies are racing to develop advanced {query} solutions, with investments expected to exceed $10 billion this year.",
+                "published_date": "2025-02-25"
+            }
+        ]
+        results.extend(news_results)
+        
+        # Add some randomness to results
+        random.shuffle(results)
+        
+        # Add relevance score (to be re-ranked later)
+        for result in results:
+            result["relevance_score"] = random.uniform(0.5, 0.9)
         
         return results
     
-    def _generate_simulated_content(self, query: str, source_type: str) -> str:
-        """Generate simulated content for demonstration purposes"""
-        words = query.lower().split()
-        
-        if source_type == "webpage":
-            return (
-                f"This webpage contains information about {query}. "
-                f"It discusses various aspects including {words[0]} theory and {words[-1]} applications. "
-                f"The page covers introductory material as well as advanced topics for researchers and practitioners."
-            )
-        elif source_type == "academic":
-            return (
-                f"Abstract: This paper presents new research on {query}. "
-                f"We introduce novel methods for implementing {words[0]} systems "
-                f"and demonstrate a {random.randint(10, 50)}% improvement over previous approaches. "
-                f"Our results suggest significant implications for future {words[-1]} research."
-            )
-        elif source_type == "news":
-            return (
-                f"Breaking news in the field of {query}! "
-                f"Researchers have announced a new breakthrough in {words[0]} technology. "
-                f"This development could revolutionize how we approach {words[-1]} "
-                f"and lead to commercial applications within {random.randint(1, 5)} years."
-            )
-        else:  # encyclopedia
-            return (
-                f"{query.title()} refers to a specific domain within quantum information science. "
-                f"It encompasses theoretical frameworks for {words[0]} as well as "
-                f"practical implementations of {words[-1]} systems. "
-                f"The field emerged in {random.randint(1980, 2010)} and has seen rapid development in recent years."
-            )
-    
-    def _quantum_rank_results(self, query: str, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def _quantum_rank_results(self, results: List[Dict[str, Any]], query: str) -> List[Dict[str, Any]]:
         """
-        Rank search results using quantum circuit for enhanced relevance calculation
+        Rank search results using quantum algorithm
         
         Args:
-            query: The search query
-            results: List of retrieved results
+            results: Search results to rank
+            query: Search query
             
         Returns:
-            List of ranked results with relevance scores
+            Ranked results
         """
-        # Extract features from query and documents
-        query_features = self._extract_features(query)
+        # Initialize random parameters for quantum circuit
+        params = np.random.uniform(0, 2 * np.pi, (3, self.n_qubits))
         
-        ranked_results = []
+        # Calculate quantum relevance scores
         for result in results:
-            # Extract features from result content
-            doc_features = self._extract_features(result["content"])
+            # Create feature vector from result content and query
+            content = f"{result.get('title', '')} {result.get('snippet', '')}"
+            features = self._feature_vector(content, query)
             
+            # Calculate quantum score
             try:
-                # Run the quantum circuit for relevance calculation
-                # Generate random weights for demonstration
-                weights = np.random.rand(self.n_qubits)
+                # Apply quantum circuit
+                quantum_score = float(self.quantum_circuit(params, features))
                 
-                # Ensure consistent feature vector lengths
-                query_feat_padded = np.pad(query_features, 
-                                          (0, max(0, self.n_qubits - len(query_features))),
-                                          'constant')[:self.n_qubits]
-                doc_feat_padded = np.pad(doc_features, 
-                                        (0, max(0, self.n_qubits - len(doc_features))),
-                                        'constant')[:self.n_qubits]
+                # Convert from [-1, 1] to [0, 1]
+                normalized_score = (quantum_score + 1) / 2
                 
-                # Run quantum circuit
-                measurements = self.relevance_circuit(query_feat_padded, doc_feat_padded, weights)
+                # Combine with original score
+                original_score = result.get("relevance_score", 0.5)
+                result["relevance_score"] = 0.7 * normalized_score + 0.3 * original_score
                 
-                # Calculate relevance score from measurements
-                # Convert from [-1,1] range to [0,1] range
-                quantum_scores = [(m + 1) / 2 for m in measurements]
-                relevance = sum(quantum_scores) / len(quantum_scores)
-                
-                # Add quantum-boosted relevance
-                result_with_score = result.copy()
-                result_with_score["relevance"] = relevance
-                result_with_score["quantum_enhanced"] = True
-                
-                # Generate a summary
-                result_with_score["summary"] = self._generate_summary(result["content"], query)
-                
-                ranked_results.append(result_with_score)
+                # Add ranking explanation
+                result["ranking_method"] = "quantum"
+                result["quantum_boost"] = normalized_score > original_score
             except Exception as e:
                 logger.error(f"Error in quantum ranking: {str(e)}")
-                # Fall back to classical ranking
-                result_with_score = result.copy()
-                result_with_score["relevance"] = result["initial_relevance"]
-                result_with_score["quantum_enhanced"] = False
-                result_with_score["summary"] = self._generate_summary(result["content"], query)
-                result_with_score["error"] = str(e)
-                ranked_results.append(result_with_score)
+                # Fall back to original score
+                result["ranking_method"] = "classical_fallback"
         
-        # Sort by relevance score
-        ranked_results.sort(key=lambda x: x["relevance"], reverse=True)
+        # Sort by relevance score (descending)
+        ranked_results = sorted(results, key=lambda x: x.get("relevance_score", 0), reverse=True)
+        
+        # Add rank information
+        for i, result in enumerate(ranked_results):
+            result["rank"] = i + 1
+            # Calculate rank change from original
+            result["rank_change"] = result.get("original_rank", i+1) - (i + 1)
+        
         return ranked_results
     
-    def _classical_rank_results(self, query: str, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def _classical_rank_results(self, results: List[Dict[str, Any]], query: str) -> List[Dict[str, Any]]:
         """
-        Rank search results using classical relevance calculation
+        Rank search results using classical algorithm
         
         Args:
-            query: The search query
-            results: List of retrieved results
+            results: Search results to rank
+            query: Search query
             
         Returns:
-            List of ranked results with relevance scores
+            Ranked results
         """
-        query_terms = set(self._preprocess_text(query))
+        query_terms = query.lower().split()
         
-        ranked_results = []
         for result in results:
-            content_terms = set(self._preprocess_text(result["content"]))
+            # Extract content
+            title = result.get("title", "").lower()
+            snippet = result.get("snippet", "").lower()
+            content = f"{title} {snippet}"
             
-            # Calculate term overlap (simple TF matching)
-            if len(query_terms) > 0:
-                overlap = len(query_terms.intersection(content_terms)) / len(query_terms)
-            else:
-                overlap = 0
-                
-            # Combine with initial relevance
-            relevance = (0.7 * result["initial_relevance"]) + (0.3 * overlap)
+            # Calculate term frequency
+            term_matches = sum(1 for term in query_terms if term in content)
+            term_frequency = term_matches / max(1, len(query_terms))
             
-            # Add relevance score
-            result_with_score = result.copy()
-            result_with_score["relevance"] = relevance
-            result_with_score["quantum_enhanced"] = False
+            # Calculate recency score (if available)
+            recency_score = 0.5  # Default
+            if "published_date" in result:
+                try:
+                    pub_date = datetime.fromisoformat(result["published_date"])
+                    days_ago = (datetime.now() - pub_date).days
+                    recency_score = 1.0 / (1.0 + 0.01 * days_ago)
+                except:
+                    pass
             
-            # Generate a summary
-            result_with_score["summary"] = self._generate_summary(result["content"], query)
+            # Calculate source quality (simulated)
+            source_quality = 0.8
+            if result.get("source") == "academic":
+                source_quality = 0.9
             
-            ranked_results.append(result_with_score)
+            # Calculate relevance score
+            result["relevance_score"] = 0.5 * term_frequency + 0.3 * recency_score + 0.2 * source_quality
+            result["ranking_method"] = "classical"
         
-        # Sort by relevance score
-        ranked_results.sort(key=lambda x: x["relevance"], reverse=True)
+        # Sort by relevance score (descending)
+        ranked_results = sorted(results, key=lambda x: x.get("relevance_score", 0), reverse=True)
+        
+        # Add rank information
+        for i, result in enumerate(ranked_results):
+            result["rank"] = i + 1
+            # Calculate rank change from original
+            result["rank_change"] = result.get("original_rank", i+1) - (i + 1)
+        
         return ranked_results
     
-    def _extract_features(self, text: str) -> List[float]:
+    async def _generate_highlights(self, query: str, results: List[Dict[str, Any]]) -> str:
         """
-        Extract numerical features from text for quantum processing
+        Generate search highlights using AI
         
         Args:
-            text: The text to extract features from
+            query: Search query
+            results: Ranked search results
             
         Returns:
-            List of numerical features
+            Highlights text
         """
-        # This is a simplified feature extraction
-        # In a real implementation, this would use more sophisticated NLP techniques
+        if not results:
+            return "No search results found."
         
-        # Preprocess text
-        words = self._preprocess_text(text)
-        
-        # Very simple feature extraction based on word statistics
-        features = []
-        
-        # Feature 1: Text length (normalized)
-        features.append(min(len(text) / 1000, 1.0))
-        
-        # Feature 2: Word count (normalized)
-        features.append(min(len(words) / 100, 1.0))
-        
-        # Feature 3-4: Character distributions
-        alpha_count = sum(c.isalpha() for c in text)
-        numeric_count = sum(c.isdigit() for c in text)
-        
-        if len(text) > 0:
-            features.append(alpha_count / len(text))
-            features.append(numeric_count / len(text))
-        else:
-            features.extend([0, 0])
-        
-        # Add more features as needed
-        
-        return features
-    
-    def _preprocess_text(self, text: str) -> List[str]:
-        """
-        Preprocess text for analysis
-        
-        Args:
-            text: Text to preprocess
-            
-        Returns:
-            List of preprocessed words
-        """
-        # Convert to lowercase
-        text = text.lower()
-        
-        # Remove special characters
-        text = re.sub(r'[^\w\s]', '', text)
-        
-        # Split into words
-        words = text.split()
-        
-        # Remove common stop words (simplified)
-        stop_words = {'the', 'and', 'is', 'in', 'to', 'a', 'of', 'for'}
-        words = [word for word in words if word not in stop_words]
-        
-        return words
-    
-    def _generate_summary(self, content: str, query: str) -> str:
-        """
-        Generate a summary of content relevant to the query
-        
-        Args:
-            content: The content to summarize
-            query: The search query
-            
-        Returns:
-            Summarized content
-        """
-        # Split content into sentences
-        sentences = re.split(r'(?<=[.!?])\s+', content)
-        
-        # If very short content, return as is
-        if len(sentences) <= 3:
-            return content
-        
-        # Find sentences containing query terms
-        query_terms = set(self._preprocess_text(query))
-        relevant_sentences = []
-        
-        for sentence in sentences:
-            sentence_terms = set(self._preprocess_text(sentence))
-            # Check if sentence contains any query terms
-            if sentence_terms.intersection(query_terms):
-                relevant_sentences.append(sentence)
-        
-        # If no relevant sentences found, take first 3
-        if not relevant_sentences and len(sentences) > 0:
-            relevant_sentences = sentences[:3]
-        
-        # Combine sentences into summary
-        summary = ' '.join(relevant_sentences)
-        
-        # If summary is too long, truncate
-        if len(summary) > 300:
-            summary = summary[:297] + '...'
-            
-        return summary
-    
-    async def _synthesize_information(self, query: str, ranked_results: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        Synthesize information from top-ranked sources
-        
-        Args:
-            query: The search query
-            ranked_results: Ranked search results
-            
-        Returns:
-            Dict with synthesized information
-        """
-        if not ranked_results:
-            return {
-                "summary": "No information found for the given query.",
-                "sources_used": 0
-            }
-        
-        # Use top results for synthesis
-        top_results = ranked_results[:3]
-        
-        # Try to use AI models for synthesis if available
-        synthesis = ""
+        # Try to use AI for highlights
         if self.openai_client:
             try:
-                synthesis = await self._synthesize_with_openai(query, top_results)
+                return await self._generate_highlights_with_openai(query, results)
             except Exception as e:
-                logger.error(f"Error synthesizing with OpenAI: {str(e)}")
-                synthesis = self._simple_synthesis(query, top_results)
-        elif self.anthropic_client:
+                logger.error(f"Error generating highlights with OpenAI: {str(e)}")
+        
+        if self.anthropic_client:
             try:
-                synthesis = await self._synthesize_with_anthropic(query, top_results)
+                return await self._generate_highlights_with_anthropic(query, results)
             except Exception as e:
-                logger.error(f"Error synthesizing with Anthropic: {str(e)}")
-                synthesis = self._simple_synthesis(query, top_results)
-        else:
-            synthesis = self._simple_synthesis(query, top_results)
+                logger.error(f"Error generating highlights with Anthropic: {str(e)}")
         
-        return {
-            "summary": synthesis,
-            "sources_used": len(top_results),
-            "sources": [{"url": r["url"], "title": r["title"]} for r in top_results]
-        }
+        # Fallback to simple highlights
+        return self._generate_simple_highlights(query, results)
     
-    async def _synthesize_with_openai(self, query: str, results: List[Dict[str, Any]]) -> str:
-        """Synthesize information using OpenAI"""
-        # Prepare content for prompt
-        content_text = ""
-        for i, result in enumerate(results):
-            content_text += f"Source {i+1}: {result['title']}\n"
-            content_text += f"URL: {result['url']}\n"
-            content_text += f"Content: {result['content']}\n\n"
+    async def _generate_highlights_with_openai(self, query: str, results: List[Dict[str, Any]]) -> str:
+        """Generate highlights using OpenAI"""
+        # Prepare input for OpenAI
+        results_text = json.dumps(results[:3], indent=2)
         
-        # Create prompt
-        prompt = f"""
-        I need a comprehensive answer to the following query: "{query}"
+        system_prompt = """You are a helpful search assistant. Summarize the key highlights from these search results 
+        related to the query. Focus on the most relevant and important information. Be concise and informative. 
+        Format your response with bullet points."""
         
-        Based on these sources:
+        user_message = f"Query: {query}\n\nSearch Results:\n{results_text}\n\nPlease provide a concise summary of the key information related to this query."
         
-        {content_text}
-        
-        Please synthesize the information to create a comprehensive, accurate response.
-        Include the most important points relevant to the query.
-        Aim for a concise but informative summary (about 150-200 words).
-        """
-        
-        # Call OpenAI API
         response = await self.openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "You are a research assistant that synthesizes information from multiple sources to answer queries accurately."},
-                {"role": "user", "content": prompt}
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
             ],
             max_tokens=500
         )
         
         return response.choices[0].message.content
     
-    async def _synthesize_with_anthropic(self, query: str, results: List[Dict[str, Any]]) -> str:
-        """Synthesize information using Anthropic"""
-        # Prepare content for prompt
-        content_text = ""
-        for i, result in enumerate(results):
-            content_text += f"Source {i+1}: {result['title']}\n"
-            content_text += f"URL: {result['url']}\n"
-            content_text += f"Content: {result['content']}\n\n"
+    async def _generate_highlights_with_anthropic(self, query: str, results: List[Dict[str, Any]]) -> str:
+        """Generate highlights using Anthropic"""
+        # Prepare input for Anthropic
+        results_text = json.dumps(results[:3], indent=2)
         
-        # Create prompt
-        prompt = f"""
-        I need a comprehensive answer to the following query: "{query}"
+        system_prompt = """You are a helpful search assistant. Summarize the key highlights from these search results 
+        related to the query. Focus on the most relevant and important information. Be concise and informative. 
+        Format your response with bullet points."""
         
-        Based on these sources:
+        user_message = f"Query: {query}\n\nSearch Results:\n{results_text}\n\nPlease provide a concise summary of the key information related to this query."
         
-        {content_text}
-        
-        Please synthesize the information to create a comprehensive, accurate response.
-        Include the most important points relevant to the query.
-        Aim for a concise but informative summary (about 150-200 words).
-        """
-        
-        # Call Anthropic API
         response = await self.anthropic_client.messages.create(
             model="claude-3-opus-20240229",
-            system="You are a research assistant that synthesizes information from multiple sources to answer queries accurately.",
+            system=system_prompt,
             max_tokens=500,
             messages=[
-                {"role": "user", "content": prompt}
+                {"role": "user", "content": user_message}
             ]
         )
         
         return response.content[0].text
     
-    def _simple_synthesis(self, query: str, results: List[Dict[str, Any]]) -> str:
-        """Create a simple synthesis when AI models are not available"""
-        # Extract summaries
-        summaries = [r.get("summary", "") for r in results if "summary" in r]
+    def _generate_simple_highlights(self, query: str, results: List[Dict[str, Any]]) -> str:
+        """Generate simple highlights without AI"""
+        highlights = [f"Top results for: {query}"]
         
-        if not summaries:
-            return f"No detailed information found for: {query}"
+        for i, result in enumerate(results[:3]):
+            title = result.get("title", "Untitled")
+            snippet = result.get("snippet", "")
+            source = result.get("source", "unknown source")
+            
+            highlights.append(f"• {title}")
+            highlights.append(f"  {snippet[:100]}...")
+            highlights.append(f"  Source: {source}")
+            highlights.append("")
         
-        # Get source names
-        sources = [r.get("title", "Unknown source") for r in results]
+        highlights.append(f"Found {len(results)} results in total.")
         
-        # Create synthesis
-        synthesis = f"Information about {query}:\n\n"
-        
-        for i, summary in enumerate(summaries):
-            if summary:
-                synthesis += f"From {sources[i]}:\n{summary}\n\n"
-        
-        return synthesis
+        return "\n".join(highlights)
     
     def get_search_history(self) -> List[Dict[str, Any]]:
-        """Get search history"""
+        """
+        Get search history
+        
+        Returns:
+            List of search records
+        """
         return self.search_history
     
-    def get_last_search_results(self) -> List[Dict[str, Any]]:
-        """Get results from the last search"""
-        return self.last_search_results
-    
-    def clear_search_history(self):
-        """Clear search history"""
-        self.search_history = []
-    
     def get_status(self) -> Dict[str, Any]:
-        """Get status information"""
+        """
+        Get status information
+        
+        Returns:
+            Dict with status information
+        """
         return {
             "quantum_enabled": self.use_quantum,
             "n_qubits": self.n_qubits,
             "openai_available": self.openai_client is not None,
             "anthropic_available": self.anthropic_client is not None,
-            "searches_performed": len(self.search_history),
-            "last_search_time": self.search_history[-1]["timestamp"] if self.search_history else None
+            "searches_performed": len(self.search_history)
         }
