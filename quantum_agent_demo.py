@@ -86,54 +86,85 @@ async def initialize_agent():
     if st.session_state.agent_initialized:
         return True
     
-    # Initialize quantum engine
     try:
-        if AZURE_QUANTUM_AVAILABLE and st.session_state.use_quantum:
-            st.session_state.quantum_engine = AzureQuantumEngine(
-                use_hardware=st.session_state.use_hardware,
-                n_qubits=st.session_state.n_qubits,
-                provider=st.session_state.provider
-            )
-            st.info(f"Initialized Azure Quantum engine with {st.session_state.n_qubits} qubits")
-        else:
-            # Use PennyLane simulation
-            import pennylane as qml
-            st.session_state.quantum_engine = "pennylane_simulation"
-            st.info(f"Using PennyLane quantum simulation with {st.session_state.n_qubits} qubits")
-    except Exception as e:
-        st.error(f"Failed to initialize quantum engine: {str(e)}")
-        st.session_state.quantum_engine = None
-    
-    # Initialize quantum bridge
-    try:
-        if QUANTUM_BRIDGE_AVAILABLE and st.session_state.use_quantum and st.session_state.quantum_engine:
-            st.session_state.quantum_bridge = QuantumAgentBridge(
-                st.session_state.quantum_engine,
-                use_hardware=st.session_state.use_hardware,
-                n_qubits=st.session_state.n_qubits
-            )
-            st.info("Initialized quantum agent bridge")
-        else:
-            st.session_state.quantum_bridge = None
-    except Exception as e:
-        st.error(f"Failed to initialize quantum bridge: {str(e)}")
-        st.session_state.quantum_bridge = None
-    
-    # Initialize agent
-    try:
-        st.session_state.agent = QA3CoreAgent(
-            use_quantum=st.session_state.use_quantum,
-            n_qubits=st.session_state.n_qubits
-        )
-        
-        # Start the agent loop to ensure it's running
-        asyncio.create_task(st.session_state.agent.start_agent_loop())
-        
-        # Set the agent status to initialized and running
-        st.session_state.agent_running = True
-        st.success("QA³ agent initialized and running")
+        with st.status("Initializing QA³ agent...", expanded=True) as status:
+            st.write("Setting up quantum components...")
+            
+            # Initialize quantum circuits
+            try:
+                from quantum_agent_framework.quantum.simple_circuits import SimpleQuantumCircuits
+                st.session_state.quantum_circuits = SimpleQuantumCircuits(
+                    n_qubits=st.session_state.n_qubits,
+                    use_quantum=st.session_state.use_quantum
+                )
+                st.write("✅ Quantum circuits initialized")
+            except ImportError as e:
+                logger.warning(f"Quantum circuits not available: {str(e)}")
+                st.session_state.quantum_circuits = None
+                st.write("⚠️ Quantum circuits not available. Using simulated quantum processing.")
+            
+            # Initialize search engine
+            try:
+                from quantum_agent_framework.search import QuantumEnhancedSearch
+                st.session_state.search_engine = QuantumEnhancedSearch(
+                    n_qubits=st.session_state.n_qubits,
+                    use_quantum=st.session_state.use_quantum
+                )
+                st.write("✅ Quantum-enhanced search initialized")
+            except ImportError as e:
+                logger.warning(f"Quantum-enhanced search not available: {str(e)}")
+                st.session_state.search_engine = None
+                st.write("⚠️ Quantum-enhanced search not available. Using standard search.")
+            
+            # Initialize main agent
+            try:
+                from quantum_agent_framework.qa3_agent import QA3Agent
+                
+                st.write("Creating agent instance...")
+                st.session_state.agent = QA3Agent(
+                    use_quantum=st.session_state.use_quantum,
+                    n_qubits=st.session_state.n_qubits, 
+                    use_claude=True,
+                    use_openai=True
+                )
+                
+                st.session_state.agent_initialized = True
+                st.write("✅ QA³ agent ready!")
+                
+                # Start agent loop
+                st.write("Starting agent loop...")
+                await st.session_state.agent.start_agent_loop()
+                st.session_state.agent_running = True
+                st.write("✅ Agent loop running!")
+                
+                status.update(label="QA³ agent initialized successfully!", state="complete")
+                st.success("QA³ agent initialized and running")
+                
+            except ImportError as e:
+                logger.warning(f"QA3Agent not available: {str(e)}")
+                st.write("⚠️ QA3Agent not available. Using fallback agent implementation.")
+                
+                # Fallback to legacy agent implementation
+                try:
+                    st.session_state.agent = QA3CoreAgent(
+                        use_quantum=st.session_state.use_quantum,
+                        n_qubits=st.session_state.n_qubits
+                    )
+                    
+                    # Start the agent loop to ensure it's running
+                    asyncio.create_task(st.session_state.agent.start_agent_loop())
+                    
+                    # Set the agent status to initialized and running
+                    st.session_state.agent_initialized = True
+                    st.session_state.agent_running = True
+                    st.success("Fallback agent initialized and running")
+                except Exception as fallback_error:
+                    st.error(f"Failed to initialize fallback agent: {str(fallback_error)}")
+                    return False
+                
         st.session_state.agent_initialized = True
         return True
+        
     except Exception as e:
         st.error(f"Failed to initialize agent: {str(e)}")
         st.session_state.agent_running = False
