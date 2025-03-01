@@ -13,6 +13,7 @@ and comprehensive task execution capabilities.
 
 import os
 import json
+import re
 import time
 import logging
 import asyncio
@@ -506,7 +507,8 @@ class QA3AgentEnhanced:
     
     def _extract_search_query(self, task: str) -> str:
         """
-        Extract search query from task description
+        Extract search query from task description using intelligence to
+        identify actual search intent rather than using direct text.
         
         Args:
             task: Task description
@@ -514,13 +516,14 @@ class QA3AgentEnhanced:
         Returns:
             Search query
         """
-        task_lower = task.lower()
+        task_lower = task.lower().strip()
         
         # Handle explicit search prefixes
         prefixes = ["search:", "deep search:", "find:", "lookup:"]
         for prefix in prefixes:
             if task_lower.startswith(prefix):
-                return task[len(prefix):].strip()
+                raw_query = task[len(prefix):].strip()
+                return self._refine_search_query(raw_query)
         
         # Handle search phrases
         phrases = ["search for", "find information about", "look up", 
@@ -529,11 +532,56 @@ class QA3AgentEnhanced:
         for phrase in phrases:
             if phrase in task_lower:
                 # Get text after the phrase
-                query = task_lower.split(phrase, 1)[1].strip()
-                return query
+                raw_query = task_lower.split(phrase, 1)[1].strip()
+                return self._refine_search_query(raw_query)
         
-        # Default: use the whole task as query
-        return task
+        # For all other cases, use smarter query extraction
+        return self._refine_search_query(task)
+    
+    def _refine_search_query(self, raw_query: str) -> str:
+        """
+        Refine a raw search query to extract meaningful search terms.
+        Removes filler words, extracts key search terms, and focuses on actual intent.
+        
+        Args:
+            raw_query: Raw search query text
+            
+        Returns:
+            Refined search query
+        """
+        # Remove common filler phrases
+        fillers = [
+            "please", "can you", "i want to", "i need to", "could you", 
+            "i'd like to", "help me", "i want", "for me"
+        ]
+        
+        query = raw_query.lower()
+        for filler in fillers:
+            if filler in query:
+                query = query.replace(filler, "")
+        
+        # Handle special cases for different search types
+        if "jobs" in query or "career" in query or "position" in query:
+            # For job searches, extract the relevant company and position terms
+            return self._extract_job_search_terms(query)
+            
+        elif "weather" in query or "forecast" in query:
+            # For weather searches, extract location
+            return self._extract_location_from_query(query, search_type="weather")
+            
+        elif "restaurants" in query or "places to eat" in query or "food near" in query:
+            # For restaurant searches, extract cuisine type and location
+            return self._extract_location_from_query(query, search_type="restaurants")
+        
+        # Clean up the query - remove extra spaces and punctuation
+        query = query.strip()
+        query = ' '.join(query.split())  # Remove extra whitespace
+        
+        # If query is too short, return the original
+        if len(query) < 3:
+            return raw_query
+            
+        return query
     
     def _extract_job_search_query(self, task: str) -> str:
         """
@@ -556,12 +604,6 @@ class QA3AgentEnhanced:
             if phrase in query:
                 query = query.replace(phrase, "")
         
-        # Remove company references
-        companies = ["microsoft", "google", "amazon", "apple", "facebook", "meta"]
-        for company in companies:
-            if company in query:
-                query = query.replace(company, "")
-        
         # Remove common filler words
         fillers = ["at", "for", "in", "related to", "about", "regarding", "concerning"]
         for filler in fillers:
@@ -574,6 +616,124 @@ class QA3AgentEnhanced:
             # Default to generic job search if nothing specific found
             query = "software jobs"
         
+        return query
+        
+    def _extract_job_search_terms(self, query: str) -> str:
+        """
+        Extract job search terms from a query.
+        Takes a query and identifies company names, job titles, and skills,
+        then formats them into an effective job search query.
+        
+        Args:
+            query: Raw job search query
+            
+        Returns:
+            Refined job search query
+        """
+        # First, check for company names
+        companies = []
+        company_list = ["microsoft", "google", "amazon", "apple", "facebook", "meta", 
+                      "twitter", "netflix", "uber", "airbnb", "linkedin", "ibm",
+                      "salesforce", "adobe", "oracle", "intel", "amd", "nvidia"]
+        
+        for company in company_list:
+            if company in query.lower():
+                companies.append(company)
+                # Don't remove the company name from query, as we'll use it
+        
+        # Check for job types/roles
+        job_roles = []
+        role_indicators = ["engineer", "developer", "manager", "designer", "analyst", 
+                         "scientist", "assistant", "specialist", "consultant",
+                         "architect", "administrator", "lead", "head", "director"]
+        
+        for role in role_indicators:
+            if role in query.lower():
+                # Find the complete role (with adjectives before it)
+                words = query.lower().split()
+                if role in words:
+                    role_idx = words.index(role)
+                    # Look back up to 3 words to capture the full role
+                    start_idx = max(0, role_idx - 3)
+                    potential_role = " ".join(words[start_idx:role_idx+1])
+                    # Clean up potential role
+                    potential_role = re.sub(r'[^\w\s]', '', potential_role)
+                    job_roles.append(potential_role.strip())
+        
+        # Build the refined query
+        refined_query = ""
+        
+        # Add companies if found
+        if companies:
+            refined_query += " ".join(companies) + " "
+        
+        # Add job roles if found
+        if job_roles:
+            refined_query += " ".join(job_roles) + " "
+        
+        # If we extracted useful terms
+        if refined_query.strip():
+            # Add "jobs" if not already in the query
+            if "job" not in refined_query.lower() and "career" not in refined_query.lower():
+                refined_query += "jobs"
+            return refined_query.strip()
+        
+        # If we couldn't extract anything useful, return the original query
+        # but remove common fillers like "find me" or "look for"
+        fillers = ["find me", "get me", "look for", "search for", "help me find"]
+        cleaned_query = query
+        for filler in fillers:
+            if filler in cleaned_query.lower():
+                cleaned_query = cleaned_query.lower().replace(filler, "").strip()
+        
+        return cleaned_query
+    
+    def _extract_location_from_query(self, query: str, search_type: str = "general") -> str:
+        """
+        Extract location information from a query.
+        
+        Args:
+            query: Raw search query
+            search_type: Type of search (weather, restaurants, etc.)
+            
+        Returns:
+            Refined query with location focus
+        """
+        # Common location prepositions
+        prepositions = ["in", "near", "at", "around", "for"]
+        query_lower = query.lower()
+        
+        # Look for location after prepositions
+        for prep in prepositions:
+            if f" {prep} " in query_lower:
+                parts = query_lower.split(f" {prep} ")
+                if len(parts) > 1 and len(parts[1]) > 0:
+                    # Assume the text after the preposition contains location
+                    location_part = parts[1].strip()
+                    
+                    # Special handling based on search type
+                    if search_type == "weather":
+                        return f"weather {location_part}"
+                    elif search_type == "restaurants":
+                        # Extract cuisine type if present in first part
+                        cuisine_types = ["italian", "chinese", "mexican", "indian", "japanese", 
+                                       "thai", "french", "greek", "spanish", "korean", 
+                                       "vietnamese", "american", "mediterranean"]
+                        cuisine = None
+                        for c_type in cuisine_types:
+                            if c_type in parts[0]:
+                                cuisine = c_type
+                                break
+                        
+                        if cuisine:
+                            return f"{cuisine} restaurants {location_part}"
+                        else:
+                            return f"restaurants {location_part}"
+                    else:
+                        # General location search
+                        return location_part
+        
+        # If no location found with prepositions, return the original query
         return query
     
     def _extract_companies_from_task(self, task: str) -> List[str]:
@@ -591,7 +751,9 @@ class QA3AgentEnhanced:
         
         # Check for common companies
         company_list = ["microsoft", "google", "amazon", "apple", "facebook", "meta", 
-                      "twitter", "netflix", "uber", "airbnb", "linkedin", "ibm"]
+                      "twitter", "netflix", "uber", "airbnb", "linkedin", "ibm", 
+                      "salesforce", "adobe", "oracle", "nvidia", "intel", "tesla", 
+                      "spotify", "airbnb", "dropbox", "slack", "zoom"]
         
         for company in company_list:
             if company in task_lower:

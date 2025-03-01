@@ -1,3 +1,2 @@
-"""
-Quantum Module for QA³ Agent
-"""
+# Import quantum module components
+from quantum_agent_framework.quantum.enhanced_search_ranker import EnhancedQuantumRanker
