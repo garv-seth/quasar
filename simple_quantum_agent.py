@@ -141,10 +141,27 @@ async def process_message(message):
             classical_time = result["execution_time"] * (1.5 + (0.1 * st.session_state.n_qubits))
             speedup_factor = classical_time / result["execution_time"]
             
-            result["classical_time"] = classical_time
-            result["speedup_factor"] = speedup_factor
-            result["source_count"] = result.get("source_count", 20)
-            result["result_count"] = result.get("result_count", 15)
+            # Convert any special types like tensors or numpy arrays to Python native types
+            result["classical_time"] = float(classical_time)
+            result["speedup_factor"] = float(speedup_factor)
+            result["source_count"] = int(result.get("source_count", 20))
+            result["result_count"] = int(result.get("result_count", 15))
+            
+            # Ensure all values in the result are JSON serializable
+            for key in list(result.keys()):
+                try:
+                    # Test JSON serialization
+                    json.dumps({key: result[key]})
+                except (TypeError, OverflowError):
+                    # If not serializable, convert to string or remove
+                    if hasattr(result[key], 'tolist'):
+                        result[key] = result[key].tolist()  # Convert numpy arrays/tensors
+                    elif hasattr(result[key], 'item'):
+                        result[key] = result[key].item()    # Convert single-value tensors
+                    elif hasattr(result[key], '__dict__'):
+                        result[key] = str(result[key])      # Convert objects
+                    else:
+                        result[key] = str(result[key])      # Convert anything else
             
         else:
             # Regular chat processing

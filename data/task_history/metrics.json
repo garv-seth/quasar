@@ -1,13 +1,13 @@
 {
-  "total_tasks": 2,
-  "successful_tasks": 2,
+  "total_tasks": 3,
+  "successful_tasks": 3,
   "failed_tasks": 0,
   "search_tasks": 0,
   "navigation_tasks": 0,
   "interaction_tasks": 0,
-  "general_tasks": 2,
-  "quantum_enhanced_tasks": 2,
+  "general_tasks": 3,
+  "quantum_enhanced_tasks": 3,
   "classical_tasks": 0,
-  "average_execution_time": 3.553806781768799,
+  "average_execution_time": 3.587180773417155,
   "quantum_speedup_factor": 1.0
 }
