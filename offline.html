@@ -1,101 +1,225 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Offline - QA³</title>
-    <link rel="manifest" href="./manifest.json">
-    <link rel="icon" href="./icon-192.png">
+    <title>Offline - QA³: Quantum-Accelerated AI Agent</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
             margin: 0;
             padding: 20px;
+            background-color: #1E1E1E;
+            color: #f5f5f5;
             text-align: center;
-            background-color: #121212;
-            color: #ffffff;
-            min-height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
+            min-height: 90vh;
         }
-        
         .container {
             max-width: 600px;
-            margin: 0 auto;
+            padding: 30px;
+            border-radius: 10px;
+            background-color: #2D2D2D;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
         }
-        
         h1 {
-            color: #7e57c2;
-        }
-        
-        .logo {
-            max-width: 150px;
+            color: #7B68EE;
             margin-bottom: 20px;
         }
-        
-        .button {
-            background-color: #7e57c2;
+        p {
+            margin-bottom: 20px;
+            font-size: 1.1rem;
+        }
+        .logo {
+            width: 120px;
+            height: 120px;
+            margin-bottom: 20px;
+        }
+        .actions {
+            margin-top: 30px;
+        }
+        button {
+            background-color: #7B68EE;
             color: white;
-            padding: 10px 20px;
             border: none;
+            padding: 12px 20px;
             border-radius: 5px;
-            margin-top: 20px;
             cursor: pointer;
-            font-size: 16px;
-            text-decoration: none;
+            font-size: 1rem;
+            margin: 0 10px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #6A5ACD;
+        }
+        .offline-indicator {
             display: inline-block;
-        }
-        
-        .quantum-animation {
-            position: relative;
-            width: 100px;
-            height: 100px;
-            margin: 20px auto;
-        }
-        
-        .quantum-dot {
-            position: absolute;
-            width: 20px;
-            height: 20px;
-            background-color: #7e57c2;
+            width: 12px;
+            height: 12px;
+            background-color: #FF5555;
             border-radius: 50%;
-            top: 40px;
-            left: 40px;
-            animation: quantum-spin 3s infinite linear;
+            margin-right: 5px;
         }
-        
-        @keyframes quantum-spin {
-            0% { transform: translateX(0) translateY(0); }
-            25% { transform: translateX(30px) translateY(-30px); opacity: 0.7; }
-            50% { transform: translateX(0) translateY(0); opacity: 1; }
-            75% { transform: translateX(-30px) translateY(30px); opacity: 0.7; }
-            100% { transform: translateX(0) translateY(0); }
+        .pending-tasks {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #353535;
+            border-radius: 5px;
+            text-align: left;
+            max-width: 100%;
+        }
+        .task-item {
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #444;
+        }
+        .task-time {
+            font-size: 0.8rem;
+            color: #999;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <img src="./icon-192.png" alt="QA³ Logo" class="logo">
-        <h1>You're currently offline</h1>
-        <p>The QA³ quantum agent requires an internet connection to process tasks and provide up-to-date information.</p>
+        <img src="icon-192.png" alt="QA³ Logo" class="logo">
+        <h1>You're Currently Offline</h1>
+        <p><span class="offline-indicator"></span> No internet connection detected.</p>
+        <p>The QA³ Quantum-Accelerated AI Agent requires an internet connection for full functionality. However, some previously cached data may still be available.</p>
         
-        <div class="quantum-animation">
-            <div class="quantum-dot"></div>
+        <div class="pending-tasks" id="pending-tasks">
+            <h3>Pending Tasks</h3>
+            <div id="task-list">
+                <!-- Task list will be populated by JavaScript -->
+                <p id="no-tasks-message">No pending tasks found.</p>
+            </div>
         </div>
         
-        <p>Some previously performed searches and tasks may be available in your task history.</p>
-        
-        <a href="/" class="button">Try Again</a>
+        <div class="actions">
+            <button id="retry-button">Retry Connection</button>
+            <button id="home-button">Go to Home</button>
+        </div>
     </div>
-    
+
     <script>
-        // Check for connectivity and reload if back online
-        window.addEventListener('online', () => {
+        // Check for pending tasks in IndexedDB
+        async function checkPendingTasks() {
+            try {
+                const db = await openDatabase();
+                const tasks = await getStoredTasks(db);
+                const searches = await getStoredSearches(db);
+                
+                const pendingItems = [...tasks, ...searches];
+                
+                if (pendingItems.length > 0) {
+                    document.getElementById('no-tasks-message').style.display = 'none';
+                    const taskList = document.getElementById('task-list');
+                    
+                    pendingItems.forEach(item => {
+                        const taskElement = document.createElement('div');
+                        taskElement.className = 'task-item';
+                        
+                        const timestamp = new Date(item.timestamp || Date.now()).toLocaleString();
+                        
+                        taskElement.innerHTML = `
+                            <div>${item.description || item.query || 'Unnamed task'}</div>
+                            <div class="task-time">Added: ${timestamp}</div>
+                        `;
+                        
+                        taskList.appendChild(taskElement);
+                    });
+                }
+            } catch (error) {
+                console.error('Error checking pending tasks:', error);
+            }
+        }
+        
+        // Helper function to open IndexedDB
+        function openDatabase() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open('qa3-offline-db', 1);
+                
+                request.onerror = event => {
+                    reject('Database error: ' + event.target.errorCode);
+                };
+                
+                request.onsuccess = event => {
+                    resolve(event.target.result);
+                };
+                
+                request.onupgradeneeded = event => {
+                    const db = event.target.result;
+                    
+                    // Create object stores if they don't exist
+                    if (!db.objectStoreNames.contains('searches')) {
+                        db.createObjectStore('searches', { keyPath: 'id' });
+                    }
+                    
+                    if (!db.objectStoreNames.contains('tasks')) {
+                        db.createObjectStore('tasks', { keyPath: 'id' });
+                    }
+                };
+            });
+        }
+        
+        // Helper function to get stored tasks
+        function getStoredTasks(db) {
+            return new Promise((resolve, reject) => {
+                try {
+                    const transaction = db.transaction(['tasks'], 'readonly');
+                    const store = transaction.objectStore('tasks');
+                    const request = store.getAll();
+                    
+                    request.onerror = event => {
+                        reject('Error fetching tasks: ' + event.target.errorCode);
+                    };
+                    
+                    request.onsuccess = event => {
+                        resolve(event.target.result || []);
+                    };
+                } catch (error) {
+                    console.error('Error in getStoredTasks:', error);
+                    resolve([]);
+                }
+            });
+        }
+        
+        // Helper function to get stored searches
+        function getStoredSearches(db) {
+            return new Promise((resolve, reject) => {
+                try {
+                    const transaction = db.transaction(['searches'], 'readonly');
+                    const store = transaction.objectStore('searches');
+                    const request = store.getAll();
+                    
+                    request.onerror = event => {
+                        reject('Error fetching searches: ' + event.target.errorCode);
+                    };
+                    
+                    request.onsuccess = event => {
+                        resolve(event.target.result || []);
+                    };
+                } catch (error) {
+                    console.error('Error in getStoredSearches:', error);
+                    resolve([]);
+                }
+            });
+        }
+        
+        // Add event listeners
+        document.getElementById('retry-button').addEventListener('click', () => {
             window.location.reload();
         });
+        
+        document.getElementById('home-button').addEventListener('click', () => {
+            window.location.href = '/';
+        });
+        
+        // Check pending tasks when page loads
+        document.addEventListener('DOMContentLoaded', checkPendingTasks);
     </script>
 </body>
 </html>
