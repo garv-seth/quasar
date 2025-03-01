@@ -1,0 +1,20 @@
+[
+  {
+    "task": "Search: Find me jobs at Microsoft",
+    "task_type": "search",
+    "status": "success",
+    "execution_time": 1.340820074081421,
+    "quantum_enhanced": true,
+    "result": {
+      "success": true,
+      "search_id": 1,
+      "query": "Find me jobs at Microsoft",
+      "search_results": [
+        {
+          "id": "indeed_1740790411_6",
+          "title": "Senior Find Me Jobs At Microsoft Specialist",
+          "snippet": "Digital Enterprises is seeking a talented professional with expertise in Find me jobs at Microsoft to join our all industries team. The ideal candidate will have strong skills in Find me jobs at Microsoft and experience with all industries.",
+          "url": "https://www.indeed.com/search?q=Find+me+jobs+at+Microsoft&result=6",
+          "source": "Indeed",
+          "source_type": "jobs",
+          "relevance_score": 
