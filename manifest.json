@@ -1,11 +1,11 @@
 {
-  "name": "QUASAR QA³: Quantum-Accelerated AI Agent",
+  "name": "QA³ - Quantum-Accelerated AI Agent",
   "short_name": "QA³",
+  "description": "A quantum-enhanced AI agent with autonomous web capabilities",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0E1117",
-  "theme_color": "#7B2FFF",
-  "description": "A quantum-powered AI agent for advanced computational tasks",
+  "background_color": "#1e1e1e",
+  "theme_color": "#6200ee",
   "icons": [
     {
       "src": "/icon-192.png",
@@ -18,39 +18,27 @@
       "type": "image/png"
     }
   ],
+  "orientation": "portrait",
+  "prefer_related_applications": false,
+  "related_applications": [],
+  "serviceworker": {
+    "src": "/sw.js",
+    "scope": "/"
+  },
   "screenshots": [
     {
       "src": "/screenshot1.png",
       "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide"
+      "type": "image/png"
     }
   ],
-  "related_applications": [],
-  "prefer_related_applications": false,
-  "shortcuts": [
-    {
-      "name": "Quantum Circuits",
-      "short_name": "Circuits",
-      "description": "Design and run quantum circuits",
-      "url": "/?page=Quantum+Circuits",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
-    },
-    {
-      "name": "Factorization",
-      "short_name": "Factorize",
-      "description": "Run quantum factorization algorithms",
-      "url": "/?page=Factorization",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
-    }
+  "features": [
+    "Quantum-enhanced search algorithms",
+    "Autonomous web browsing",
+    "Natural language task processing"
   ],
-  "categories": ["productivity", "education", "scientific"],
-  "lang": "en-US",
-  "orientation": "any",
-  "dir": "ltr",
-  "iarc_rating_id": "",
-  "scope": "/",
-  "edge_side_panel": {
-    "preferred_width": 400
+  "categories": ["productivity", "utilities", "ai"],
+  "launch_handler": {
+    "client_mode": ["navigate", "auto"]
   }
 }
